@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const asyncHandler = require('../utils/async');
 const { ok } = require('../utils/respuesta');
@@ -7,6 +9,28 @@ const sia = require('../sia/client');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
+
+const CACHE_FILE = path.join(__dirname, '..', '..', 'data', 'cache-academico.json');
+
+function leerCache() {
+  try {
+    return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+  } catch (e) {
+    return { carreras: [], cursos: [] };
+  }
+}
+
+function guardarCache(parcial) {
+  try {
+    const dir = path.dirname(CACHE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const actual = leerCache();
+    const nuevo = Object.assign({}, actual, parcial, { actualizado_en: new Date().toISOString() });
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(nuevo, null, 2), 'utf8');
+  } catch (e) {
+    // si falla el cache en disco, continuar sin interrumpir
+  }
+}
 
 function extraerLista(cuerpo) {
   if (!cuerpo) return [];
@@ -30,13 +54,16 @@ router.get(
       const r = await sia.getConToken('/api/v1/carreras', req.token);
       if (r.ok) {
         const lista = extraerLista(r.data);
+        if (lista.length) guardarCache({ carreras: lista });
         const meta = r.data && r.data.meta ? r.data.meta : null;
         return ok(res, lista, { ...(meta || {}), origen: 'SIA' });
       }
     } catch (e) {
       // sin conexión
     }
-    return ok(res, [], { origen: 'CACHE', aviso: 'No se pudo obtener carreras del SIA.' });
+    const cache = leerCache();
+    const lista = Array.isArray(cache.carreras) ? cache.carreras : [];
+    return ok(res, lista, { origen: 'CACHE', aviso: lista.length ? 'Mostrando carreras desde caché local.' : 'No se pudo obtener carreras del SIA.' });
   })
 );
 
@@ -61,6 +88,10 @@ router.get(
       const r = await sia.getConToken(ruta, req.token);
       if (r.ok) {
         let lista = extraerLista(r.data);
+        // Guardar en caché la lista completa (sin filtrar por carrera)
+        if (!req.query.carrera_id && !req.query.carreraId && lista.length) {
+          guardarCache({ cursos: lista });
+        }
         // Filtro local por carrera si el SIA no lo aplica
         const carreraId = req.query.carrera_id || req.query.carreraId;
         if (carreraId) {
@@ -72,7 +103,13 @@ router.get(
     } catch (e) {
       // sin conexión
     }
-    return ok(res, [], { origen: 'CACHE', aviso: 'No se pudo obtener cursos del SIA.' });
+    const cache = leerCache();
+    let lista = Array.isArray(cache.cursos) ? cache.cursos : [];
+    const carreraId = req.query.carrera_id || req.query.carreraId;
+    if (carreraId) {
+      lista = lista.filter((c) => String(c.carreraId || c.carrera_id) === String(carreraId));
+    }
+    return ok(res, lista, { origen: 'CACHE', aviso: lista.length ? 'Mostrando cursos desde caché local.' : 'No se pudo obtener cursos del SIA.' });
   })
 );
 
