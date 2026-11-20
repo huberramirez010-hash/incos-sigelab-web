@@ -47,15 +47,22 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const params = new URLSearchParams();
+    params.set('tipo', 'DOCENTE');
     if (req.query.q) params.set('q', req.query.q);
     if (req.query.pagina) params.set('pagina', req.query.pagina);
     if (req.query.limite) params.set('limite', req.query.limite);
 
     const qs = params.toString();
-    const ruta = '/api/v1/docentes' + (qs ? '?' + qs : '');
+    // En producción los docentes se consultan como personas tipo DOCENTE.
+    // Se mantiene /api/v1/docentes como alternativa por compatibilidad.
+    const ruta = '/api/v1/personas?' + qs;
 
     try {
-      const r = await sia.getConToken(ruta, req.token);
+      let r = await sia.getConToken(ruta, req.token);
+      if (!r.ok && r.status === 404) {
+        const alt = '/api/v1/docentes' + (qs ? '?' + qs.replace('tipo=DOCENTE&', '').replace('&tipo=DOCENTE', '').replace('tipo=DOCENTE', '') : '');
+        r = await sia.getConToken(alt, req.token);
+      }
       if (r.ok) {
         const lista = extraerLista(r.data).map(normalizarPersona).filter((p) => p.persona_id);
         for (const p of lista) {
