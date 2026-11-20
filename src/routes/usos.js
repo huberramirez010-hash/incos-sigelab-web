@@ -84,30 +84,25 @@ router.post(
     const ambienteId = Number(body.ambiente_id);
     const personaId = Number(body.persona_id);
     const fecha = String(body.fecha || '').slice(0, 10);
-    const slot = slotPorValor(body.turno);
+
+    // Soporta un turno o múltiples turnos (para docentes con más de un horario)
+    let turnosReq = [];
+    if (Array.isArray(body.turnos)) turnosReq = body.turnos;
+    else if (body.turno) turnosReq = [body.turno];
+    // normalizar, únicos, válidos
+    const valoresTurno = [...new Set(turnosReq.map((t) => String(t)).filter(Boolean))];
+    const slots = valoresTurno.map(slotPorValor).filter(Boolean);
 
     if (!ambienteId) return fail(res, 400, 'DATOS_INVALIDOS', 'Seleccione un laboratorio/ambiente.');
     if (!personaId) return fail(res, 400, 'DATOS_INVALIDOS', 'Seleccione el docente que utiliza el laboratorio.');
     if (!fechaValida(fecha)) return fail(res, 400, 'DATOS_INVALIDOS', 'La fecha no es válida (use AAAA-MM-DD).');
-    if (!slot) return fail(res, 400, 'DATOS_INVALIDOS', 'Seleccione un turno/horario válido.');
+    if (!slots.length) return fail(res, 400, 'DATOS_INVALIDOS', 'Seleccione al menos un turno/horario.');
 
     const ambiente = await store.getAmbiente(ambienteId);
     if (!ambiente) return fail(res, 404, 'NO_ENCONTRADO', 'El ambiente no existe.');
     if (ambiente.activo === false) return fail(res, 400, 'DATOS_INVALIDOS', 'El ambiente está inactivo.');
 
-    // Evitar duplicado en el mismo ambiente, fecha y turno.
     const existentes = await store.listUsos({ ambiente_id: ambienteId, fecha });
-    const conflicto = existentes.find(
-      (u) => u.activo !== false && u.turno === slot.valor && u.estado !== 'CANCELADO'
-    );
-    if (conflicto) {
-      return fail(
-        res,
-        409,
-        'CONFLICTO',
-        'Ese laboratorio ya tiene un uso registrado en esa fecha y horario.'
-      );
-    }
 
     // Cachear nombre del docente si viene en la solicitud
     if (body.persona_nombre) {
@@ -118,31 +113,61 @@ router.post(
       });
     }
 
-    const uso = await store.createUso({
-      ambiente_id: ambienteId,
-      persona_id: personaId,
-      carrera_id: body.carrera_id || null,
-      carrera_nombre: String(body.carrera_nombre || '').trim(),
-      curso_id: body.curso_id || null,
-      curso_nombre: String(body.curso_nombre || '').trim(),
-      fecha,
-      turno: slot.valor,
-      hora_inicio: slot.hora_inicio,
-      hora_fin: slot.hora_fin,
-      estado: 'EN_USO',
-      observaciones: String(body.observaciones || '').trim(),
-      registrado_por_persona_id: req.user.persona_id,
-    });
+    const creados = [];
+    const conflictos = [];
 
-    await store.addAuditoria({
-      persona_id: req.user.persona_id,
-      accion: 'REGISTRO_USO',
-      entidad: 'USO_AMBIENTE',
-      entidad_id: uso.id,
-    });
+    for (const slot of slots) {
+      const conflicto = existentes.find(
+        (u) => u.activo !== false && u.turno === slot.valor && u.estado !== 'CANCELADO'
+      );
+      if (conflicto) {
+        conflictos.push(slot.etiqueta || slot.valor);
+        continue;
+      }
 
-    const [enriquecido] = await enriquecer([uso]);
-    return creado(res, enriquecido);
+      const uso = await store.createUso({
+        ambiente_id: ambienteId,
+        persona_id: personaId,
+        carrera_id: body.carrera_id || null,
+        carrera_nombre: String(body.carrera_nombre || '').trim(),
+        curso_id: body.curso_id || null,
+        curso_nombre: String(body.curso_nombre || '').trim(),
+        fecha,
+        turno: slot.valor,
+        hora_inicio: slot.hora_inicio,
+        hora_fin: slot.hora_fin,
+        estado: 'EN_USO',
+        observaciones: String(body.observaciones || '').trim(),
+        registrado_por_persona_id: req.user.persona_id,
+      });
+
+      await store.addAuditoria({
+        persona_id: req.user.persona_id,
+        accion: 'REGISTRO_USO',
+        entidad: 'USO_AMBIENTE',
+        entidad_id: uso.id,
+      });
+
+      creados.push(uso);
+      // agregar a existentes en memoria para evitar duplicados dentro del mismo lote
+      existentes.push(uso);
+    }
+
+    if (!creados.length) {
+      return fail(
+        res,
+        409,
+        'CONFLICTO',
+        'Los turnos seleccionados ya tienen un uso registrado en esa fecha y laboratorio: ' + conflictos.join(', ') + '.'
+      );
+    }
+
+    const enriquecidos = await enriquecer(creados);
+    const meta = { creados: creados.length };
+    if (conflictos.length) {
+      meta.avisos = ['No se registraron estos turnos porque ya estaban ocupados: ' + conflictos.join(', ')];
+    }
+    return creado(res, enriquecidos.length === 1 ? enriquecidos[0] : enriquecidos, meta);
   })
 );
 

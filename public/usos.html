@@ -55,10 +55,8 @@
             <input class="form-control" id="fecha" type="date" required />
           </div>
           <div class="field">
-            <label for="turno">Turno / horario *</label>
-            <select class="form-select" id="turno" required>
-              <option value="">Seleccione…</option>
-            </select>
+            <label>Turno / horario * <span class="hint">(podés marcar más de uno si el docente tiene varios turnos)</span></label>
+            <div id="turnosGrupo" class="hint">Cargando…</div>
           </div>
           <div class="field" style="grid-column:1/-1">
             <label for="observaciones">Observaciones</label>
@@ -203,10 +201,14 @@
 
         poblarCursos('');
 
-        const selTurno = document.getElementById('turno');
-        selTurno.innerHTML = '<option value="">Seleccione…</option>' + (catalogo.turnos || []).map((t) =>
-          '<option value="' + esc(t.valor) + '">' + esc(t.etiqueta) + '</option>'
-        ).join('');
+        const grupoTurnos = document.getElementById('turnosGrupo');
+        if ((catalogo.turnos || []).length) {
+          grupoTurnos.innerHTML = (catalogo.turnos || []).map((t) =>
+            '<label style="display:block;margin:4px 0;cursor:pointer"><input type="checkbox" name="turno" value="' + esc(t.valor) + '"> ' + esc(t.etiqueta) + '</label>'
+          ).join('');
+        } else {
+          grupoTurnos.innerHTML = '<span class="hint">No hay turnos disponibles</span>';
+        }
       }
 
       document.getElementById('carrera').addEventListener('change', function () {
@@ -265,6 +267,13 @@
         limpiarAlerta('#alerta');
         if (!permisos.canManage) return;
         const btn = document.getElementById('btnRegistrar');
+
+        const turnosSel = Array.from(document.querySelectorAll('input[name="turno"]:checked')).map((i) => i.value);
+        if (!turnosSel.length) {
+          mostrarAlerta('#alerta', 'Seleccione al menos un turno/horario.', 'warn');
+          return;
+        }
+
         btn.disabled = true;
         btn.textContent = 'Registrando…';
         try {
@@ -284,11 +293,14 @@
             curso_id: selCurso.value ? Number(selCurso.value) : null,
             curso_nombre: optCurso && selCurso.value ? optCurso.text : '',
             fecha: document.getElementById('fecha').value,
-            turno: document.getElementById('turno').value,
+            turnos: turnosSel,
             observaciones: document.getElementById('observaciones').value,
           };
-          await API.pedir('/api/usos', { method: 'POST', body });
+          const res = await API.pedir('/api/usos', { method: 'POST', body });
+          const creados = Array.isArray(res) ? res.length : 1;
+          mostrarAlerta('#alerta', 'Uso registrado correctamente' + (creados > 1 ? ' (' + creados + ' turnos).' : '.'), 'ok');
           document.getElementById('observaciones').value = '';
+          document.querySelectorAll('input[name="turno"]:checked').forEach((i) => { i.checked = false; });
           await cargarUsos();
         } catch (e) {
           mostrarAlerta('#alerta', e.message || 'No se pudo registrar el uso.');
