@@ -58,11 +58,6 @@ function montarNavegacion(activo) {
   const permisos = API.permisos() || {};
   const cargo = (permisos.cargos || []).join(', ');
 
-  // Enlace "Solicitudes" visible solo para Encargado (canManage).
-  const solicitudEnlace = permisos.canManage
-    ? { id: 'solicitudes', href: '/solicitudes.html', texto: 'Solicitudes' }
-    : null;
-
   const enlaces = [
     { id: 'dashboard', href: '/index.html', texto: 'Dashboard' },
     { id: 'inventario', href: '/inventario.html', texto: 'Inventario' },
@@ -70,13 +65,11 @@ function montarNavegacion(activo) {
     { id: 'ambientes', href: '/ambientes.html', texto: 'Ambientes' },
   ];
 
-  // Insertar el enlace de solicitudes si el usuario tiene permiso.
-  if (solicitudEnlace) {
-    enlaces.splice(1, 0, solicitudEnlace);
+  // Enlaces exclusivos del Encargado (canManage).
+  if (permisos.canManage) {
+    enlaces.splice(1, 0, { id: 'solicitudes', href: '/solicitudes.html', texto: 'Solicitudes' });
+    enlaces.push({ id: 'usos', href: '/usos.html', texto: 'Uso de labs' });
   }
-
-  // Enlace "Solicitudes" visible solo para Encargado (canManage).
-  // Se insertará después en la función montarNavegacion si el usuario tiene permiso.
 
   cont.innerHTML =
     '<div class="inner">' +

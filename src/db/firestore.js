@@ -23,6 +23,7 @@ const COL = {
   contadores: 'sigelab_contadores',
   usuarios: 'sigelab_usuarios',
   codigos: 'sigelab_codigos',
+  usos: 'sigelab_usos_ambientes',
 };
 
 let admin = null;
@@ -552,6 +553,74 @@ async function updateUsuarioLocal(id, cambios) {
 }
 
 // ------------------------------------------------------------------
+// Uso de laboratorios (sesiones por turno/horario)
+// ------------------------------------------------------------------
+
+async function listUsos(filtros) {
+  init();
+  const f = filtros || {};
+  const snap = await db.collection(COL.usos).get();
+  let lista = snap.docs.map(docToObj);
+  if (f.incluir_inactivos !== 'true' && f.incluir_inactivos !== true) {
+    lista = lista.filter((u) => u.activo !== false);
+  }
+  if (f.ambiente_id) lista = lista.filter((u) => u.ambiente_id === Number(f.ambiente_id));
+  if (f.persona_id) lista = lista.filter((u) => u.persona_id === Number(f.persona_id));
+  if (f.fecha) lista = lista.filter((u) => String(u.fecha) === String(f.fecha));
+  if (f.turno) lista = lista.filter((u) => String(u.turno) === String(f.turno));
+  if (f.estado) lista = lista.filter((u) => String(u.estado) === String(f.estado));
+  return lista.sort((a, b) => {
+    const ka = String(a.fecha || '') + ' ' + String(a.hora_inicio || '') + ' ' + String(a.id || '');
+    const kb = String(b.fecha || '') + ' ' + String(b.hora_inicio || '') + ' ' + String(b.id || '');
+    return kb.localeCompare(ka);
+  });
+}
+
+async function getUso(id) {
+  init();
+  const snap = await db.collection(COL.usos).doc(String(id)).get();
+  return snap.exists ? docToObj(snap) : null;
+}
+
+async function createUso(datos) {
+  init();
+  return db.runTransaction(async (tx) => {
+    const id = await nextIdTx(tx, COL.usos);
+    const item = {
+      ambiente_id: Number(datos.ambiente_id),
+      persona_id: Number(datos.persona_id),
+      fecha: String(datos.fecha),
+      turno: String(datos.turno),
+      hora_inicio: String(datos.hora_inicio),
+      hora_fin: String(datos.hora_fin),
+      estado: datos.estado || 'EN_USO',
+      observaciones: datos.observaciones || '',
+      registrado_por_persona_id: datos.registrado_por_persona_id || null,
+      activo: true,
+      creado_en: ahora(),
+      actualizado_en: ahora(),
+    };
+    tx.set(db.collection(COL.usos).doc(String(id)), item);
+    return { id, ...item };
+  });
+}
+
+async function updateUso(id, datos) {
+  init();
+  const ref = db.collection(COL.usos).doc(String(id));
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const limpio = Object.assign({}, datos, { actualizado_en: ahora() });
+  delete limpio.id;
+  delete limpio.ambiente_id;
+  delete limpio.fecha;
+  delete limpio.turno;
+  await ref.set(limpio, { merge: true });
+  const actualizado = await ref.get();
+  return docToObj(actualizado);
+}
+
+// ------------------------------------------------------------------
 // Codigos de verificacion / recuperacion (uno activo por usuario+tipo+canal)
 // ------------------------------------------------------------------
 
@@ -610,7 +679,7 @@ function maxId(lista) {
 
 async function resetStore() {
   init();
-  const colecciones = [COL.ambientes, COL.equipos, COL.historial, COL.auditoria, COL.cachePersonas, COL.contadores];
+  const colecciones = [COL.ambientes, COL.equipos, COL.historial, COL.auditoria, COL.cachePersonas, COL.usos, COL.contadores];
 
   // 1) Borrar todo.
   for (const nombre of colecciones) {
@@ -657,6 +726,7 @@ async function resetStore() {
   batch.set(db.collection(COL.contadores).doc(COL.historial), { valor: maxId(seed.historial) });
   batch.set(db.collection(COL.contadores).doc(COL.auditoria), { valor: maxId(seed.auditoria) });
   batch.set(db.collection(COL.contadores).doc(COL.cachePersonas), { valor: 0 });
+  batch.set(db.collection(COL.contadores).doc(COL.usos), { valor: 0 });
   batch.set(db.collection(COL.contadores).doc(COL.usuarios), { valor: maxUsuario });
 
   await batch.commit();
@@ -684,6 +754,10 @@ module.exports = {
   upsertCachePersona,
   listCachePersonas,
   getCachePersona,
+  listUsos,
+  getUso,
+  createUso,
+  updateUso,
   getUsuarioLocalPorCorreo,
   getUsuarioLocalPorTelefono,
   getUsuarioLocal,

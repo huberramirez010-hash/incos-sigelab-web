@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uso de laboratorios · SIGELAB-INCOS</title>
+  <link rel="stylesheet" href="/css/app.css?v=6" />
+</head>
+<body>
+  <header id="topbar"></header>
+
+  <main class="container">
+    <div id="siaStatus" class="status-strip"><span class="dot"></span><span>Consultando estado del núcleo…</span></div>
+
+    <div class="page-head">
+      <div>
+        <h1>Uso de laboratorios</h1>
+        <p class="sub">Registre qué docente utiliza cada laboratorio por fecha y horario (tarde/noche). Solo Encargado.</p>
+      </div>
+    </div>
+
+    <div id="alerta"></div>
+
+    <section class="card" id="formCard">
+      <h2 style="font-size:1.1rem;margin:0 0 12px 0">Registrar uso</h2>
+      <form id="formUso">
+        <div class="form-grid">
+          <div class="field">
+            <label for="ambiente">Laboratorio / ambiente *</label>
+            <select class="form-select" id="ambiente" required>
+              <option value="">Cargando…</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="docente">Docente (SIA) *</label>
+            <select class="form-select" id="docente" required>
+              <option value="">Cargando…</option>
+            </select>
+            <div class="hint">Se obtiene del SIA. Si no aparece, verifique la conexión o la caché.</div>
+          </div>
+          <div class="field">
+            <label for="fecha">Fecha *</label>
+            <input class="form-control" id="fecha" type="date" required />
+          </div>
+          <div class="field">
+            <label for="turno">Turno / horario *</label>
+            <select class="form-select" id="turno" required>
+              <option value="">Seleccione…</option>
+            </select>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="observaciones">Observaciones</label>
+            <input class="form-control" id="observaciones" maxlength="200" placeholder="Opcional" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn btn-primary" type="submit" id="btnRegistrar">Registrar uso</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card mt-3">
+      <div class="page-head" style="margin-bottom:10px">
+        <h2 style="font-size:1.1rem;margin:0">Registros de uso</h2>
+        <div class="row">
+          <input class="form-control" id="filtroFecha" type="date" style="max-width:170px" />
+          <select class="form-select" id="filtroAmbiente" style="max-width:220px">
+            <option value="">Todos los ambientes</option>
+          </select>
+          <select class="form-select" id="filtroEstado" style="max-width:180px">
+            <option value="">Todos los estados</option>
+            <option value="EN_USO">En uso</option>
+            <option value="FINALIZADO">Finalizado</option>
+            <option value="CANCELADO">Cancelado</option>
+          </select>
+          <button class="btn btn-outline" type="button" id="btnFiltrar">Filtrar</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Horario</th>
+              <th>Ambiente</th>
+              <th>Docente (usuario)</th>
+              <th>Estado</th>
+              <th>Observaciones</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyUsos">
+            <tr><td colspan="7" class="empty">Cargando registros…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/api.js?v=6"></script>
+  <script src="/js/ui.js?v=6"></script>
+  <script>
+    (function () {
+      proteger();
+      montarNavegacion('usos');
+      montarEstadoSia();
+
+      const permisos = API.permisos() || {};
+      if (!permisos.canManage) {
+        document.getElementById('formCard').style.display = 'none';
+        mostrarAlerta('#alerta', 'Solo el Encargado puede registrar el uso de laboratorios.', 'warn');
+      }
+
+      let catalogo = { turnos: [] };
+      let ambientes = [];
+      let docentes = [];
+
+      function hoyISO() {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      }
+
+      function estadoUsoBadge(estado) {
+        const mapa = { EN_USO: 'ok', FINALIZADO: 'neutral', CANCELADO: 'danger' };
+        const texto = { EN_USO: 'EN USO', FINALIZADO: 'FINALIZADO', CANCELADO: 'CANCELADO' }[estado] || estado;
+        return '<span class="badge badge-' + (mapa[estado] || 'neutral') + '">' + esc(texto) + '</span>';
+      }
+
+      async function cargarCatalogos() {
+        const [cat, amb, doc] = await Promise.all([
+          API.pedir('/api/usos/catalogos').catch(() => ({ turnos: [] })),
+          API.pedir('/api/ambientes').catch(() => []),
+          API.pedir('/api/docentes?limite=200').catch(() => []),
+        ]);
+        catalogo = cat || { turnos: [] };
+        ambientes = Array.isArray(amb) ? amb.filter((a) => a.activo !== false) : [];
+        docentes = Array.isArray(doc) ? doc : [];
+
+        const selAmb = document.getElementById('ambiente');
+        selAmb.innerHTML = '<option value="">Seleccione…</option>' + ambientes.map((a) =>
+          '<option value="' + a.id + '">' + esc(a.codigo + ' - ' + a.nombre) + '</option>'
+        ).join('');
+
+        const selFiltroAmb = document.getElementById('filtroAmbiente');
+        selFiltroAmb.innerHTML = '<option value="">Todos los ambientes</option>' + ambientes.map((a) =>
+          '<option value="' + a.id + '">' + esc(a.codigo + ' - ' + a.nombre) + '</option>'
+        ).join('');
+
+        const selDoc = document.getElementById('docente');
+        if (docentes.length) {
+          selDoc.innerHTML = '<option value="">Seleccione…</option>' + docentes.map((d) =>
+            '<option value="' + (d.persona_id || d.id) + '">' + esc((d.nombre_completo || '') + (d.ci ? ' (' + d.ci + ')' : '')) + '</option>'
+          ).join('');
+        } else {
+          selDoc.innerHTML = '<option value="">No hay docentes disponibles</option>';
+        }
+
+        const selTurno = document.getElementById('turno');
+        selTurno.innerHTML = '<option value="">Seleccione…</option>' + (catalogo.turnos || []).map((t) =>
+          '<option value="' + esc(t.valor) + '">' + esc(t.etiqueta) + '</option>'
+        ).join('');
+      }
+
+      async function cargarUsos() {
+        const fecha = document.getElementById('filtroFecha').value;
+        const ambienteId = document.getElementById('filtroAmbiente').value;
+        const estado = document.getElementById('filtroEstado').value;
+        const params = new URLSearchParams();
+        if (fecha) params.set('fecha', fecha);
+        if (ambienteId) params.set('ambiente_id', ambienteId);
+        if (estado) params.set('estado', estado);
+        const qs = params.toString();
+        try {
+          const datos = await API.pedir('/api/usos' + (qs ? '?' + qs : ''));
+          renderUsos(Array.isArray(datos) ? datos : []);
+        } catch (e) {
+          mostrarAlerta('#alerta', e.message || 'No se pudieron cargar los registros.');
+        }
+      }
+
+      function renderUsos(usos) {
+        const tbody = document.getElementById('tbodyUsos');
+        if (!usos.length) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty">No hay registros para los filtros seleccionados.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = usos.map((u) => {
+          let acciones = '';
+          if (permisos.canManage && u.activo !== false) {
+            if (u.estado === 'EN_USO') {
+              acciones += '<button class="btn btn-outline btn-sm" data-accion="finalizar" data-id="' + u.id + '">Finalizar</button>';
+            }
+            if (u.estado !== 'CANCELADO') {
+              acciones += '<button class="btn btn-danger btn-sm" data-accion="cancelar" data-id="' + u.id + '">Cancelar</button>';
+            }
+          }
+          return '<tr>' +
+            '<td>' + esc(u.fecha || '') + '</td>' +
+            '<td>' + esc(u.turno_etiqueta || u.turno || '') + '<br><span class="hint">' + esc((u.hora_inicio || '') + ' - ' + (u.hora_fin || '')) + '</span></td>' +
+            '<td><strong>' + esc(u.ambiente_codigo || '') + '</strong><br><span class="hint">' + esc(u.ambiente_nombre || '') + '</span></td>' +
+            '<td>' + esc(u.persona_nombre || ('ID ' + u.persona_id)) + '</td>' +
+            '<td>' + estadoUsoBadge(u.estado) + '</td>' +
+            '<td>' + esc(u.observaciones || '') + '</td>' +
+            '<td><div class="actions">' + (acciones || '<span class="hint">—</span>') + '</div></td>' +
+          '</tr>';
+        }).join('');
+      }
+
+      document.getElementById('formUso').addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        limpiarAlerta('#alerta');
+        if (!permisos.canManage) return;
+        const btn = document.getElementById('btnRegistrar');
+        btn.disabled = true;
+        btn.textContent = 'Registrando…';
+        try {
+          const selDoc = document.getElementById('docente');
+          const optDoc = selDoc.options[selDoc.selectedIndex];
+          const body = {
+            ambiente_id: Number(document.getElementById('ambiente').value),
+            persona_id: Number(selDoc.value),
+            persona_nombre: optDoc ? optDoc.text.split(' (')[0] : '',
+            fecha: document.getElementById('fecha').value,
+            turno: document.getElementById('turno').value,
+            observaciones: document.getElementById('observaciones').value,
+          };
+          await API.pedir('/api/usos', { method: 'POST', body });
+          document.getElementById('observaciones').value = '';
+          await cargarUsos();
+        } catch (e) {
+          mostrarAlerta('#alerta', e.message || 'No se pudo registrar el uso.');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Registrar uso';
+        }
+      });
+
+      document.getElementById('tbodyUsos').addEventListener('click', async function (ev) {
+        const btn = ev.target.closest('button[data-accion]');
+        if (!btn) return;
+        const id = btn.getAttribute('data-id');
+        const accion = btn.getAttribute('data-accion');
+        try {
+          if (accion === 'finalizar') {
+            await API.pedir('/api/usos/' + id + '/finalizar', { method: 'POST', body: {} });
+          } else if (accion === 'cancelar') {
+            if (!confirm('¿Cancelar este registro de uso?')) return;
+            await API.pedir('/api/usos/' + id, { method: 'DELETE' });
+          }
+          await cargarUsos();
+        } catch (e) {
+          mostrarAlerta('#alerta', e.message || 'No se pudo completar la acción.');
+        }
+      });
+
+      document.getElementById('btnFiltrar').addEventListener('click', cargarUsos);
+
+      document.getElementById('fecha').value = hoyISO();
+      document.getElementById('filtroFecha').value = hoyISO();
+
+      cargarCatalogos().then(cargarUsos).catch(function (e) {
+        mostrarAlerta('#alerta', e.message || 'Error al cargar datos iniciales.');
+      });
+    })();
+  </script>
+</body>
+</html>

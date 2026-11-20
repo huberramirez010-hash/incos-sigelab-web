@@ -44,6 +44,7 @@ function inicializar() {
     sigelab_historial_estados: clone(seed.historial),
     sigelab_auditoria: clone(seed.auditoria),
     sigelab_cache_personas: clone(seed.cachePersonas),
+    sigelab_usos_ambientes: [],
     sigelab_usuarios: [],
     sigelab_codigos: [],
   };
@@ -95,6 +96,7 @@ function cargar() {
     'sigelab_historial_estados',
     'sigelab_auditoria',
     'sigelab_cache_personas',
+    'sigelab_usos_ambientes',
     'sigelab_usuarios',
     'sigelab_codigos',
   ];
@@ -399,6 +401,73 @@ async function getCachePersona(id) {
 }
 
 // ------------------------------------------------------------------
+// Uso de laboratorios (sesiones por turno/horario)
+// ------------------------------------------------------------------
+
+async function listUsos(filtros) {
+  const st = cargar();
+  const f = filtros || {};
+  let lista = clone(st.sigelab_usos_ambientes || []);
+  if (f.incluir_inactivos !== 'true' && f.incluir_inactivos !== true) {
+    lista = lista.filter((u) => u.activo !== false);
+  }
+  if (f.ambiente_id) lista = lista.filter((u) => u.ambiente_id === Number(f.ambiente_id));
+  if (f.persona_id) lista = lista.filter((u) => u.persona_id === Number(f.persona_id));
+  if (f.fecha) lista = lista.filter((u) => u.fecha === String(f.fecha));
+  if (f.turno) lista = lista.filter((u) => u.turno === String(f.turno));
+  if (f.estado) lista = lista.filter((u) => u.estado === String(f.estado));
+  return lista.sort((a, b) => {
+    const ka = String(a.fecha || '') + ' ' + String(a.hora_inicio || '') + ' ' + String(a.id || '');
+    const kb = String(b.fecha || '') + ' ' + String(b.hora_inicio || '') + ' ' + String(b.id || '');
+    return kb.localeCompare(ka);
+  });
+}
+
+async function getUso(id) {
+  const st = cargar();
+  const item = (st.sigelab_usos_ambientes || []).find((u) => u.id === Number(id));
+  return item ? clone(item) : null;
+}
+
+async function createUso(datos) {
+  const st = cargar();
+  if (!Array.isArray(st.sigelab_usos_ambientes)) st.sigelab_usos_ambientes = [];
+  const id = nextId(st, 'sigelab_usos_ambientes');
+  const item = {
+    id,
+    ambiente_id: Number(datos.ambiente_id),
+    persona_id: Number(datos.persona_id),
+    fecha: String(datos.fecha),
+    turno: String(datos.turno),
+    hora_inicio: String(datos.hora_inicio),
+    hora_fin: String(datos.hora_fin),
+    estado: datos.estado || 'EN_USO',
+    observaciones: datos.observaciones || '',
+    registrado_por_persona_id: datos.registrado_por_persona_id || null,
+    activo: true,
+    creado_en: ahora(),
+    actualizado_en: ahora(),
+  };
+  st.sigelab_usos_ambientes.push(item);
+  guardar();
+  return clone(item);
+}
+
+async function updateUso(id, datos) {
+  const st = cargar();
+  const item = (st.sigelab_usos_ambientes || []).find((u) => u.id === Number(id));
+  if (!item) return null;
+  const limpio = Object.assign({}, datos, { actualizado_en: ahora() });
+  delete limpio.id;
+  delete limpio.ambiente_id;
+  delete limpio.fecha;
+  delete limpio.turno;
+  Object.assign(item, limpio);
+  guardar();
+  return clone(item);
+}
+
+// ------------------------------------------------------------------
 // Cuentas locales SIGELAB
 // ------------------------------------------------------------------
 
@@ -599,6 +668,10 @@ module.exports = {
   upsertCachePersona,
   listCachePersonas,
   getCachePersona,
+  listUsos,
+  getUso,
+  createUso,
+  updateUso,
   getUsuarioLocalPorCorreo,
   getUsuarioLocalPorTelefono,
   getUsuarioLocal,
