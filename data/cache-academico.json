@@ -1,0 +1,397 @@
+{
+  "carreras": [
+    {
+      "id": 3,
+      "nombre": "CONTADURÍA GENERAL",
+      "regimen": "ANUAL",
+      "estado": "ACTIVA"
+    },
+    {
+      "id": 4,
+      "nombre": "GASTRONOMÍA",
+      "regimen": "ANUAL",
+      "estado": "ACTIVA"
+    },
+    {
+      "id": 5,
+      "nombre": "GESTIÓN MUNICIPAL",
+      "regimen": "ANUAL",
+      "estado": "ACTIVA"
+    },
+    {
+      "id": 6,
+      "nombre": "INFORMÁTICA INDUSTRIAL",
+      "regimen": "SEMESTRAL",
+      "estado": "ACTIVA"
+    },
+    {
+      "id": 7,
+      "nombre": "PERITO EN BANCA",
+      "regimen": "ANUAL",
+      "estado": "ACTIVA"
+    },
+    {
+      "id": 8,
+      "nombre": "SECRETARIADO EJECUTIVO",
+      "regimen": "ANUAL",
+      "estado": "ACTIVA"
+    },
+    {
+      "id": 9,
+      "nombre": "SISTEMAS INFORMÁTICOS",
+      "regimen": "ANUAL",
+      "estado": "ACTIVA"
+    }
+  ],
+  "cursos": [
+    {
+      "id": 1,
+      "nombre": "1er Año A",
+      "nivel": 1,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 2,
+      "nombre": "1er Año B",
+      "nivel": 1,
+      "paralelo": "B",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 3,
+      "nombre": "1er Año C",
+      "nivel": 1,
+      "paralelo": "C",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 4,
+      "nombre": "1er Año D",
+      "nivel": 1,
+      "paralelo": "D",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 5,
+      "nombre": "1er Año E",
+      "nivel": 1,
+      "paralelo": "E",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 6,
+      "nombre": "2do Año A",
+      "nivel": 2,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 7,
+      "nombre": "2do Año B",
+      "nivel": 2,
+      "paralelo": "B",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 8,
+      "nombre": "2do Año C",
+      "nivel": 2,
+      "paralelo": "C",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 9,
+      "nombre": "3er Año A",
+      "nivel": 3,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 10,
+      "nombre": "3er Año B",
+      "nivel": 3,
+      "paralelo": "B",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 11,
+      "nombre": "3er Año C",
+      "nivel": 3,
+      "paralelo": "C",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 3,
+      "carrera": "CONTADURÍA GENERAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 12,
+      "nombre": "1er Año A",
+      "nivel": 1,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 4,
+      "carrera": "GASTRONOMÍA",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 13,
+      "nombre": "2do Año A",
+      "nivel": 2,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 4,
+      "carrera": "GASTRONOMÍA",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 14,
+      "nombre": "3er Año A",
+      "nivel": 3,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 5,
+      "carrera": "GESTIÓN MUNICIPAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 15,
+      "nombre": "2do Semestre A",
+      "nivel": 2,
+      "paralelo": "A",
+      "modalidad": "SEMESTRAL",
+      "turno": "NOCTURNO",
+      "carreraId": 6,
+      "carrera": "INFORMÁTICA INDUSTRIAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 16,
+      "nombre": "3er Semestre A",
+      "nivel": 3,
+      "paralelo": "A",
+      "modalidad": "SEMESTRAL",
+      "turno": "NOCTURNO",
+      "carreraId": 6,
+      "carrera": "INFORMÁTICA INDUSTRIAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 17,
+      "nombre": "3er Semestre B",
+      "nivel": 3,
+      "paralelo": "B",
+      "modalidad": "SEMESTRAL",
+      "turno": "NOCTURNO",
+      "carreraId": 6,
+      "carrera": "INFORMÁTICA INDUSTRIAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 18,
+      "nombre": "4to Semestre A",
+      "nivel": 4,
+      "paralelo": "A",
+      "modalidad": "SEMESTRAL",
+      "turno": "NOCTURNO",
+      "carreraId": 6,
+      "carrera": "INFORMÁTICA INDUSTRIAL",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 19,
+      "nombre": "1er Año A",
+      "nivel": 1,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 7,
+      "carrera": "PERITO EN BANCA",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 20,
+      "nombre": "1er Año B",
+      "nivel": 1,
+      "paralelo": "B",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 7,
+      "carrera": "PERITO EN BANCA",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 21,
+      "nombre": "2do Año A",
+      "nivel": 2,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 7,
+      "carrera": "PERITO EN BANCA",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 22,
+      "nombre": "1er Año A",
+      "nivel": 1,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 8,
+      "carrera": "SECRETARIADO EJECUTIVO",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 23,
+      "nombre": "1er Año B",
+      "nivel": 1,
+      "paralelo": "B",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 8,
+      "carrera": "SECRETARIADO EJECUTIVO",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 24,
+      "nombre": "2do Año A",
+      "nivel": 2,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 8,
+      "carrera": "SECRETARIADO EJECUTIVO",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 25,
+      "nombre": "3er Año A",
+      "nivel": 3,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 8,
+      "carrera": "SECRETARIADO EJECUTIVO",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 26,
+      "nombre": "1er Año A",
+      "nivel": 1,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 9,
+      "carrera": "SISTEMAS INFORMÁTICOS",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 27,
+      "nombre": "1er Año B",
+      "nivel": 1,
+      "paralelo": "B",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 9,
+      "carrera": "SISTEMAS INFORMÁTICOS",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 28,
+      "nombre": "2do Año A",
+      "nivel": 2,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 9,
+      "carrera": "SISTEMAS INFORMÁTICOS",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    },
+    {
+      "id": 29,
+      "nombre": "3er Año A",
+      "nivel": 3,
+      "paralelo": "A",
+      "modalidad": "ANUAL",
+      "turno": "NOCTURNO",
+      "carreraId": 9,
+      "carrera": "SISTEMAS INFORMÁTICOS",
+      "gestionId": 4,
+      "gestion": "2026-1"
+    }
+  ],
+  "actualizado_en": "2026-11-20T17:58:06.881Z"
+}
