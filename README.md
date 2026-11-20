@@ -32,27 +32,9 @@ Demo conforme al **Contrato de Conformidad v1.1.0** (núcleo SIA-INCOS). La aute
 
 ## 3. Arranque rápido
 
-```bash
-npm install
-npm start
-```
 
-Abrir: <http://127.0.0.1:4100>
+Abrir: <https://incos-sigelab-web-production.up.railway.app>
 
-`npm start` levanta la **aplicación SIGELAB** en el puerto 4100. Si `API_ACADEMICO_URL` apunta al simulador local (`http://127.0.0.1:3000`), también levanta el **núcleo SIA simulado**. Con la URL de producción solo se levanta SIGELAB.
-
-El archivo `.env` está versionado **sin secretos**:
-
-```env
-API_ACADEMICO_URL=https://sia-incos-api-production.up.railway.app
-PORT=4100
-DB_BACKEND=auto
-GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json
-FIREBASE_PROJECT_ID=incos-sigelab-2026
-AUTH_DEMO_CODES=true
-WHATSAPP_PROVIDER=demo
-SIA_SISTEMA=SIGELAB
-```
 
 **Almacenamiento automático (`DB_BACKEND=auto`):**
 - Si existe `serviceAccountKey.json` → usa **Firebase Firestore**.
