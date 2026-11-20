@@ -36,6 +36,10 @@ const config = {
   // Nucleo SIA-INCOS (sin barra final)
   siaUrl: (process.env.API_ACADEMICO_URL || 'http://127.0.0.1:3000').replace(/\/+$/, ''),
 
+  // Sigla con la que SIGELAB se identifica ante el SIA en cada llamada.
+  // El SIA usa X-Sistema para saber que equipo esta conectado.
+  siaSistema: (process.env.SIA_SISTEMA || 'SIGELAB').trim().toUpperCase() || 'SIGELAB',
+
   // Emisor esperado del JWT
   emisor: 'sia-incos',
 

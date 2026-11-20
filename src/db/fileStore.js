@@ -66,15 +66,43 @@ function cargar() {
   if (fs.existsSync(FILE)) {
     try {
       db = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-      if (!db.counters) db.counters = {};
     } catch (e) {
       db = inicializar();
       guardar();
+      return db;
     }
   } else {
     db = inicializar();
     guardar();
+    return db;
   }
+
+  // Asegurar estructura completa y compatibilidad con archivos antiguos.
+  if (!db || typeof db !== 'object') db = inicializar();
+  if (!db.counters || typeof db.counters !== 'object') db.counters = {};
+
+  // Migracion desde nombres antiguos.
+  if (Array.isArray(db.usuarios_local) && !Array.isArray(db.sigelab_usuarios)) {
+    db.sigelab_usuarios = db.usuarios_local;
+  }
+  if (Array.isArray(db.codigos_verificacion) && !Array.isArray(db.sigelab_codigos)) {
+    db.sigelab_codigos = db.codigos_verificacion;
+  }
+
+  const colecciones = [
+    'sigelab_ambientes',
+    'sigelab_equipos',
+    'sigelab_historial_estados',
+    'sigelab_auditoria',
+    'sigelab_cache_personas',
+    'sigelab_usuarios',
+    'sigelab_codigos',
+  ];
+  for (const col of colecciones) {
+    if (!Array.isArray(db[col])) db[col] = [];
+    if (db.counters[col] === undefined) db.counters[col] = maxId(db[col]);
+  }
+
   return db;
 }
 
@@ -416,10 +444,21 @@ async function createUsuarioLocal(datos) {
     telefono,
     password_hash: datos.password_hash,
     rol: datos.rol || 'CONSULTA',
+    rol_solicitado: datos.rol_solicitado || datos.rol || 'CONSULTA',
+    rol_solicitado_etiqueta: datos.rol_solicitado_etiqueta || null,
     persona_id: Number(datos.persona_id) || 1000000 + id,
     activo: datos.activo === true,
-    correo_verificado: false,
-    telefono_verificado: false,
+    estado_solicitud: datos.estado_solicitud || 'PENDIENTE',
+    solicitud_en: datos.solicitud_en || ahora(),
+    aprobado_en: datos.aprobado_en || null,
+    aprobado_por_persona_id: datos.aprobado_por_persona_id || null,
+    aprobado_por_nombre: datos.aprobado_por_nombre || null,
+    rechazado_en: datos.rechazado_en || null,
+    rechazado_por_persona_id: datos.rechazado_por_persona_id || null,
+    rechazado_por_nombre: datos.rechazado_por_nombre || null,
+    motivo_rechazo: datos.motivo_rechazo || null,
+    correo_verificado: datos.correo_verificado === true,
+    telefono_verificado: datos.telefono_verificado === true,
     token_version: 0,
     creado_en: ahora(),
     actualizado_en: ahora(),
@@ -428,6 +467,11 @@ async function createUsuarioLocal(datos) {
   st.sigelab_usuarios.push(item);
   guardar();
   return clone(item);
+}
+
+async function listUsuariosLocal() {
+  const st = cargar();
+  return st.sigelab_usuarios.slice().sort((a, b) => Number(b.id) - Number(a.id)).map(clone);
 }
 
 async function updateUsuarioLocal(id, cambios) {
@@ -560,6 +604,7 @@ module.exports = {
   getUsuarioLocal,
   createUsuarioLocal,
   updateUsuarioLocal,
+  listUsuariosLocal,
   upsertCodigo,
   getCodigo,
   updateCodigo,

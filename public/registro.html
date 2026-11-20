@@ -66,6 +66,14 @@
           </div>
 
           <div class="field">
+            <label for="rol_solicitado">Cargo / rol que solicita</label>
+            <select class="form-select" id="rol_solicitado" name="rol_solicitado" required>
+              <option value="">Seleccione un cargo...</option>
+            </select>
+            <p class="hint">El administrador revisará su solicitud y aprobará o rechazará el rol solicitado.</p>
+          </div>
+
+          <div class="field">
             <label for="confirmar">Confirmar contraseña</label>
             <input class="form-control" id="confirmar" name="confirmar" type="password" placeholder="Repita la contraseña" autocomplete="new-password" required />
           </div>
@@ -246,6 +254,16 @@
                 'warn'
               );
             }
+          }
+          // Poblar selector de roles desde la configuración del servidor
+          const select = document.getElementById('rol_solicitado');
+          if (cfg.rolesSolicitud && select) {
+            cfg.rolesSolicitud.forEach(function (r) {
+              const opt = document.createElement('option');
+              opt.value = r.valor;
+              opt.textContent = r.etiqueta + ' (' + r.descripcion + ')';
+              select.appendChild(opt);
+            });
           }
         })
         .catch(function () { /* sin configuracion visible */ });

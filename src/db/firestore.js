@@ -508,10 +508,21 @@ async function createUsuarioLocal(datos) {
       telefono,
       password_hash: datos.password_hash,
       rol: datos.rol || 'CONSULTA',
+      rol_solicitado: datos.rol_solicitado || datos.rol || 'CONSULTA',
+      rol_solicitado_etiqueta: datos.rol_solicitado_etiqueta || null,
       persona_id: Number(datos.persona_id) || 1000000 + id,
       activo: datos.activo === true,
-      correo_verificado: false,
-      telefono_verificado: false,
+      estado_solicitud: datos.estado_solicitud || 'PENDIENTE',
+      solicitud_en: datos.solicitud_en || ahora(),
+      aprobado_en: datos.aprobado_en || null,
+      aprobado_por_persona_id: datos.aprobado_por_persona_id || null,
+      aprobado_por_nombre: datos.aprobado_por_nombre || null,
+      rechazado_en: datos.rechazado_en || null,
+      rechazado_por_persona_id: datos.rechazado_por_persona_id || null,
+      rechazado_por_nombre: datos.rechazado_por_nombre || null,
+      motivo_rechazo: datos.motivo_rechazo || null,
+      correo_verificado: datos.correo_verificado === true,
+      telefono_verificado: datos.telefono_verificado === true,
       token_version: 0,
       creado_en: ahora(),
       actualizado_en: ahora(),
@@ -520,6 +531,12 @@ async function createUsuarioLocal(datos) {
     tx.set(db.collection(COL.usuarios).doc(String(id)), item);
     return { id, ...item };
   });
+}
+
+async function listUsuariosLocal() {
+  init();
+  const snap = await db.collection(COL.usuarios).get();
+  return snap.docs.map(docToObj);
 }
 
 async function updateUsuarioLocal(id, cambios) {
@@ -672,6 +689,7 @@ module.exports = {
   getUsuarioLocal,
   createUsuarioLocal,
   updateUsuarioLocal,
+  listUsuariosLocal,
   upsertCodigo,
   getCodigo,
   updateCodigo,

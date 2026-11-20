@@ -10,7 +10,7 @@ const rateLimit = require('../services/rateLimit');
 const email = require('../services/email');
 const whatsapp = require('../services/whatsapp');
 const { permisosDe } = require('../services/permisos');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireManage } = require('../middleware/auth');
 const config = require('../config');
 
 const router = express.Router();
@@ -273,7 +273,55 @@ router.get('/config', (req, res) => {
     whatsappProveedor: config.whatsapp.provider,
     correoGoogle: true,
     telefonoPais: '+591',
+    rolesSolicitud: localAuth.ROLES_SOLICITUD,
   });
 });
+
+/**
+ * GET /api/auth/solicitudes
+ * Lista todas las solicitudes pendientes y aprobadas/rechazadas.
+ * Requiere login (local o SIA) y rol de Encargado (canManage).
+ */
+router.get(
+  '/solicitudes',
+  requireAuth,
+  requireManage,
+  asyncHandler(async (req, res) => {
+    const solicitudes = await localAuth.listarSolicitudes();
+    return ok(res, { solicitudes });
+  })
+);
+
+/**
+ * POST /api/auth/solicitudes/:id/aprobar
+ * Aprueba una solicitud de cuenta. El administrador puede asignar un rol.
+ */
+router.post(
+  '/solicitudes/:id/aprobar',
+  requireAuth,
+  requireManage,
+  asyncHandler(async (req, res) => {
+    const { rol } = req.body || {};
+    const admin = req.user;
+    const datos = await localAuth.aprobarSolicitud(req.params.id, rol, admin);
+    return ok(res, datos);
+  })
+);
+
+/**
+ * POST /api/auth/solicitudes/:id/rechazar
+ * Rechaza una solicitud de cuenta.
+ */
+router.post(
+  '/solicitudes/:id/rechazar',
+  requireAuth,
+  requireManage,
+  asyncHandler(async (req, res) => {
+    const { motivo } = req.body || {};
+    const admin = req.user;
+    const datos = await localAuth.rechazarSolicitud(req.params.id, motivo, admin);
+    return ok(res, datos);
+  })
+);
 
 module.exports = router;

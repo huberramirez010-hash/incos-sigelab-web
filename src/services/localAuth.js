@@ -36,6 +36,35 @@ const CANALES = {
   WHATSAPP: 'WHATSAPP',
 };
 
+const ESTADOS_SOLICITUD = {
+  PENDIENTE: 'PENDIENTE',
+  APROBADO: 'APROBADO',
+  RECHAZADO: 'RECHAZADO',
+};
+
+// Roles que una persona puede solicitar al registrarse. El administrador
+// revisa la solicitud y puede aprobar el rol pedido o asignar otro.
+const ROLES_SOLICITUD = [
+  {
+    valor: 'CONSULTA',
+    etiqueta: 'Consulta',
+    descripcion: 'Solo lectura del inventario.',
+    cargo: 'Consulta',
+  },
+  {
+    valor: 'SERVICIO',
+    etiqueta: 'Técnico de Laboratorio',
+    descripcion: 'Consultar y cambiar el estado de los equipos.',
+    cargo: 'Técnico de Laboratorio',
+  },
+  {
+    valor: 'ADMINISTRATIVO',
+    etiqueta: 'Encargado de Laboratorios',
+    descripcion: 'Control total del inventario.',
+    cargo: 'Encargado de Laboratorios',
+  },
+];
+
 class LocalAuthError extends Error {
   constructor(codigo, mensaje, status) {
     super(mensaje);
@@ -114,6 +143,49 @@ function validarClave(clave) {
     return 'La contraseña debe incluir al menos una letra y un número.';
   }
   return null;
+}
+
+function normalizarRol(valor) {
+  return String(valor || '').trim().toUpperCase();
+}
+
+function rolValido(valor) {
+  return ROLES_SOLICITUD.some((r) => r.valor === valor);
+}
+
+function datosRol(valor) {
+  return ROLES_SOLICITUD.find((r) => r.valor === valor) || ROLES_SOLICITUD[0];
+}
+
+function etiquetaRol(valor) {
+  return datosRol(normalizarRol(valor)).etiqueta;
+}
+
+function cargoDeRol(valor) {
+  return datosRol(normalizarRol(valor)).cargo;
+}
+
+/**
+ * Una cuenta antigua (creada antes de este flujo) se considera aprobada si
+ * ya estaba activa. Las cuentas nuevas siempre guardan estado_solicitud.
+ */
+function estadoSolicitud(user) {
+  const estado = normalizarRol(user && user.estado_solicitud);
+  if (
+    estado === ESTADOS_SOLICITUD.PENDIENTE ||
+    estado === ESTADOS_SOLICITUD.APROBADO ||
+    estado === ESTADOS_SOLICITUD.RECHAZADO
+  ) {
+    return estado;
+  }
+  return user && user.activo
+    ? ESTADOS_SOLICITUD.APROBADO
+    : ESTADOS_SOLICITUD.PENDIENTE;
+}
+
+function rolSolicitadoDe(user) {
+  const rol = normalizarRol(user && (user.rol_solicitado || user.rol));
+  return rolValido(rol) ? rol : 'CONSULTA';
 }
 
 // ------------------------------------------------------------------
@@ -243,9 +315,7 @@ function crearToken(user) {
 }
 
 function cargosDeRol(rol) {
-  if (rol === 'ADMINISTRATIVO') return ['Encargado de Laboratorios'];
-  if (rol === 'SERVICIO') return ['Técnico de Laboratorio'];
-  return ['Consulta'];
+  return [cargoDeRol(rol)];
 }
 
 function esTokenLocal(token) {
@@ -276,6 +346,13 @@ async function validarTokenLocal(token) {
   if (!user || !user.activo) {
     throw new LocalAuthError('CUENTA_INACTIVA', 'La cuenta está inactiva.', 401);
   }
+  if (estadoSolicitud(user) !== ESTADOS_SOLICITUD.APROBADO) {
+    throw new LocalAuthError(
+      'SOLICITUD_PENDIENTE',
+      'La solicitud de esta cuenta aún no fue aprobada por el administrador.',
+      401
+    );
+  }
   if (Number(payload.tv) !== Number(user.token_version || 0)) {
     throw new LocalAuthError('TOKEN_INVALIDO', 'La sesión ya no es válida. Vuelva a ingresar.', 401);
   }
@@ -294,15 +371,24 @@ async function validarTokenLocal(token) {
 }
 
 function datosPublicos(user) {
+  const estado = estadoSolicitud(user);
+  const rolSolicitado = rolSolicitadoDe(user);
   return {
     usuario_id: user.id,
     nombre_completo: user.nombre_completo,
     correo: user.correo,
     telefono: user.telefono,
-    rol: user.rol,
+    rol: user.rol || rolSolicitado,
+    rol_solicitado: rolSolicitado,
+    rol_solicitado_etiqueta: etiquetaRol(rolSolicitado),
+    estado_solicitud: estado,
     activo: Boolean(user.activo),
     correo_verificado: Boolean(user.correo_verificado),
     telefono_verificado: Boolean(user.telefono_verificado),
+    solicitud_en: user.solicitud_en || user.creado_en || null,
+    aprobado_en: user.aprobado_en || null,
+    rechazado_en: user.rechazado_en || null,
+    motivo_rechazo: user.motivo_rechazo || '',
   };
 }
 
@@ -316,9 +402,18 @@ async function registrar(datos) {
   const telefono = normalizarTelefono(datos.telefono);
   const clave = String(datos.clave || '');
   const confirmar = String(datos.confirmar_clave || '');
+  const rolSolicitado = normalizarRol(datos.rol_solicitado);
 
   const errorNombre = validarNombre(nombre);
   if (errorNombre) throw new LocalAuthError('DATOS_INVALIDOS', errorNombre, 400);
+
+  if (!rolValido(rolSolicitado)) {
+    throw new LocalAuthError(
+      'ROL_REQUERIDO',
+      'Seleccione el cargo o rol que solicita para su cuenta.',
+      400
+    );
+  }
 
   if (!esCorreoGoogle(correo)) {
     throw new LocalAuthError(
@@ -361,19 +456,23 @@ async function registrar(datos) {
   }
 
   const existente = await store.getUsuarioLocalPorCorreo(correo);
+  const estadoExistente = existente ? estadoSolicitud(existente) : null;
 
-  if (existente && existente.activo) {
+  if (
+    existente &&
+    (existente.activo || estadoExistente === ESTADOS_SOLICITUD.APROBADO)
+  ) {
     throw new LocalAuthError(
       'REGISTRO_DUPLICADO',
-      'Ya existe una cuenta activa con ese correo. Inicie sesión o use "¿Olvidaste tu contraseña?".',
+      'Ya existe una cuenta aprobada con ese correo. Inicie sesión o use "¿Olvidaste tu contraseña?".',
       400
     );
   }
 
   let user;
-  if (existente && !existente.activo) {
-    // Si la cuenta quedó sin verificar, permitir reenviar los códigos y
-    // actualizar los datos en lugar de bloquear el registro.
+  if (existente) {
+    // Una solicitud pendiente o rechazada puede volver a enviarse. Se
+    // actualizan los datos, el rol pedido y se reinicia el estado.
     const porTelefono = await store.getUsuarioLocalPorTelefono(telefono);
     if (porTelefono && Number(porTelefono.id) !== Number(existente.id)) {
       throw new LocalAuthError(
@@ -386,7 +485,20 @@ async function registrar(datos) {
       nombre_completo: nombre,
       telefono,
       password_hash: hashPassword(clave),
+      rol_solicitado: rolSolicitado,
+      rol: rolSolicitado,
+      estado_solicitud: ESTADOS_SOLICITUD.PENDIENTE,
+      solicitud_en: new Date().toISOString(),
       activo: false,
+      correo_verificado: false,
+      telefono_verificado: false,
+      aprobado_en: null,
+      aprobado_por_persona_id: null,
+      aprobado_por_nombre: null,
+      rechazado_en: null,
+      rechazado_por_persona_id: null,
+      rechazado_por_nombre: null,
+      motivo_rechazo: null,
     });
   } else {
     user = await store.createUsuarioLocal({
@@ -394,7 +506,10 @@ async function registrar(datos) {
       correo,
       telefono,
       password_hash: hashPassword(clave),
-      rol: 'CONSULTA',
+      rol_solicitado: rolSolicitado,
+      rol: rolSolicitado,
+      estado_solicitud: ESTADOS_SOLICITUD.PENDIENTE,
+      solicitud_en: new Date().toISOString(),
       activo: false,
     });
   }
@@ -464,12 +579,17 @@ async function verificarCodigo(usuarioId, canal, codigo) {
 
   if (canalNorm === CANALES.EMAIL) {
     await validarCodigo(user, TIPOS.VERIFICAR_CORREO, CANALES.EMAIL, codigo);
+    // Sólo activa si la solicitud ya está aprobada. En modo pendiente, el usuario
+    // estará sin activar hasta que el admin apruebe.
+    const nuevoActivo = estadoSolicitud(user) === ESTADOS_SOLICITUD.APROBADO
+      ? true
+      : user.activo;  // si ya estaba activo, mantenlo; si no, no
     const actualizado = await store.updateUsuarioLocal(user.id, {
       correo_verificado: true,
-      activo: true,
+      activo: nuevoActivo,
       token_version: Number(user.token_version || 0) + 1,
     });
-    return { usuario: datosPublicos(actualizado), activo: true };
+    return { usuario: datosPublicos(actualizado), activo: nuevoActivo };
   }
 
   if (canalNorm === CANALES.WHATSAPP) {
@@ -532,6 +652,136 @@ async function reenviarCodigo(usuarioId, canal, tipo) {
     },
     demo: config.authDemoCodes ? { codigo: envio.codigo } : null,
   };
+}
+
+/**
+ * Lista todas las cuentas locales con su estado de solicitud.
+ * Se requiere autorización requireManage en el controlador.
+ */
+async function listarSolicitudes() {
+  const usuarios = await store.listUsuariosLocal();
+  return usuarios.map((u) => {
+    const rolSol = normalizarRol(u.rol_solicitado || u.rol || 'CONSULTA');
+    return {
+      usuario_id: u.id,
+      nombre_completo: u.nombre_completo,
+      correo: u.correo,
+      telefono: u.telefono,
+      rol_solicitado: rolSol,
+      rol_solicitado_etiqueta: u.rol_solicitado_etiqueta || etiquetaRol(rolSol),
+      rol: u.rol,
+      estado_solicitud: estadoSolicitud(u),
+      correo_verificado: Boolean(u.correo_verificado),
+      telefono_verificado: Boolean(u.telefono_verificado),
+      activo: Boolean(u.activo),
+      solicitud_en: u.solicitud_en || u.creado_en || null,
+      aprobado_en: u.aprobado_en || null,
+      rechazado_en: u.rechazado_en || null,
+      motivo_rechazo: u.motivo_rechazo || '',
+      aprobado_por_nombre: u.aprobado_por_nombre || '',
+      rechazado_por_nombre: u.rechazado_por_nombre || '',
+    };
+  }).sort((a, b) => String(b.solicitud_en).localeCompare(String(a.solicitud_en)));
+}
+
+/**
+ * Aprueba una solicitud de cuenta. El rol solicitado o el rol administrado
+ * se guardan en el campo `rol`. El usuario se activa si su correo ya fue
+ * verificado.
+ */
+async function aprobarSolicitud(usuarioId, rolAprobado, admin) {
+  if (!rolValido(rolAprobado)) {
+    throw new LocalAuthError('ROL_INVALIDO', 'Rol inválido para la aprobación.', 400);
+  }
+  const user = await store.getUsuarioLocal(usuarioId);
+  if (!user) throw new LocalAuthError('NO_ENCONTRADO', 'La cuenta no existe.', 404);
+  const estado = estadoSolicitud(user);
+  if (estado !== ESTADOS_SOLICITUD.PENDIENTE) {
+    throw new LocalAuthError(
+      'SOLICITUD_YA_PROCESADA',
+      'Esta solicitud ya fue ' + estado + '.',
+      409
+    );
+  }
+
+  const activo = Boolean(user.correo_verificado);
+  const actualizado = await store.updateUsuarioLocal(usuarioId, {
+    rol: rolAprobado,
+    estado_solicitud: ESTADOS_SOLICITUD.APROBADO,
+    activo: activo,
+    aprobado_en: new Date().toISOString(),
+    aprobado_por_persona_id: admin ? admin.persona_id : null,
+    aprobado_por_nombre: admin ? admin.nombre : null,
+    motivo_rechazo: null,
+    token_version: Number(user.token_version || 0) + 1,
+  });
+
+  // Auditar la aprobación (si el store lo soporta).
+  try {
+    await store.addAuditoria({
+      persona_id: admin ? admin.persona_id : null,
+      accion: 'APROBAR_SOLICITUD',
+      entidad: 'sigelab_usuarios',
+      entidad_id: usuarioId,
+      detalle: {
+        nuevo_rol: rolAprobado,
+        correo: user.correo,
+        nombre: user.nombre_completo,
+        aprobado_por: admin ? admin.nombre : null,
+      },
+    });
+  } catch (e) {
+    console.warn('[SIGELAB] No se pudo registrar la auditoría de aprobación:', e.message);
+  }
+
+  return { usuario: datosPublicos(actualizado) };
+}
+
+/**
+ * Rechaza una solicitud de cuenta.
+ */
+async function rechazarSolicitud(usuarioId, motivo, admin) {
+  const motivoLimpio = String(motivo || '').trim().slice(0, 300);
+  const user = await store.getUsuarioLocal(usuarioId);
+  if (!user) throw new LocalAuthError('NO_ENCONTRADO', 'La cuenta no existe.', 404);
+  const estado = estadoSolicitud(user);
+  if (estado !== ESTADOS_SOLICITUD.PENDIENTE) {
+    throw new LocalAuthError(
+      'SOLICITUD_YA_PROCESADA',
+      'Esta solicitud ya fue ' + estado + '.',
+      409
+    );
+  }
+
+  const actualizado = await store.updateUsuarioLocal(usuarioId, {
+    estado_solicitud: ESTADOS_SOLICITUD.RECHAZADO,
+    activo: false,
+    rechazado_en: new Date().toISOString(),
+    rechazado_por_persona_id: admin ? admin.persona_id : null,
+    rechazado_por_nombre: admin ? admin.nombre : null,
+    motivo_rechazo: motivoLimpio || null,
+    token_version: Number(user.token_version || 0) + 1,
+  });
+
+  // Auditar el rechazo
+  try {
+    await store.addAuditoria({
+      persona_id: admin ? admin.persona_id : null,
+      accion: 'RECHAZAR_SOLICITUD',
+      entidad: 'sigelab_usuarios',
+      entidad_id: usuarioId,
+      detalle: {
+        motivo: motivoLimpio,
+        correo: user.correo,
+        nombre: user.nombre_completo,
+        rechazado_por: admin ? admin.nombre : null,
+      },
+    });
+  } catch (e) {
+    console.warn('[SIGELAB] No se pudo registrar la auditoría de rechazo:', e.message);
+  }
+
+  return { usuario: datosPublicos(actualizado) };
 }
 
 async function solicitarRecuperacion(identificador, canal) {
@@ -631,6 +881,37 @@ async function loginLocal(identificador, clave) {
     );
   }
 
+  const estado = estadoSolicitud(user);
+
+  if (estado === ESTADOS_SOLICITUD.PENDIENTE) {
+    const rolEtiq = etiquetaRol(rolSolicitadoDe(user));
+    throw new LocalAuthError(
+      'SOLICITUD_PENDIENTE',
+      'Su solicitud para el rol ' + rolEtiq + ' está pendiente de aprobación por el administrador.',
+      403
+    );
+  }
+
+  if (estado === ESTADOS_SOLICITUD.RECHAZADO) {
+    const motivo = user.motivo_rechazo || '';
+    const msg = motivo
+      ? 'Su solicitud fue rechazada. ' + motivo
+      : 'Su solicitud fue rechazada. Contacte al administrador.';
+    throw new LocalAuthError(
+      'SOLICITUD_RECHAZADA',
+      msg,
+      403
+    );
+  }
+
+  if (!user.correo_verificado) {
+    throw new LocalAuthError(
+      'CORREO_NO_VERIFICADO',
+      'Debe verificar su correo antes de iniciar sesión.',
+      403
+    );
+  }
+
   if (!user.activo) {
     throw new LocalAuthError(
       'CUENTA_INACTIVA',
@@ -662,6 +943,8 @@ module.exports = {
   LocalAuthError,
   TIPOS,
   CANALES,
+  ESTADOS_SOLICITUD,
+  ROLES_SOLICITUD,
   registrar,
   verificarCodigo,
   reenviarCodigo,
@@ -673,4 +956,7 @@ module.exports = {
   normalizarCorreo,
   normalizarTelefono,
   esCorreoGoogle,
+  listarSolicitudes,
+  aprobarSolicitud,
+  rechazarSolicitud,
 };

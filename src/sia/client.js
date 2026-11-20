@@ -26,17 +26,30 @@ class SiaError extends Error {
 }
 
 const state = {
-  publicKeyPem: null,
-  publicKeyAt: 0,
+  // El SIA puede rotar el par RSA y publicar varios `kid` en el JWKS.
+  // Se cachea una clave por kid, mas una clave por defecto (endpoint PEM).
+  keys: new Map(),
+  defaultPem: null,
+  defaultAt: 0,
   claveCacheada: false,
   ultimaValidacion: null,
+  ultimoKid: null,
 };
 
 async function fetchJson(url, opciones, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs || config.siaTimeoutMs);
   try {
-    const res = await fetch(url, { ...(opciones || {}), signal: controller.signal });
+    // Todas las llamadas al SIA (login, JWKS, estado, personas, cargos)
+    // llevan la sigla del sistema para que el panel del SIA identifique
+    // el origen. Sin este header la actividad aparece como SIN IDENTIFICAR.
+    const opcionesFinales = { ...(opciones || {}) };
+    opcionesFinales.headers = {
+      'X-Sistema': config.siaSistema,
+      ...((opciones && opciones.headers) || {}),
+    };
+    opcionesFinales.signal = controller.signal;
+    const res = await fetch(url, opcionesFinales);
     const texto = await res.text();
     let data = null;
     if (texto) {
@@ -62,6 +75,8 @@ function extraerPem(cuerpo) {
       cuerpo.clave,
       cuerpo.publicKey,
       cuerpo.clave_publica,
+      cuerpo.clavePublica,
+      cuerpo.public_key,
       cuerpo.datos,
     ];
     for (const c of candidatos) {
@@ -72,47 +87,119 @@ function extraerPem(cuerpo) {
   return null;
 }
 
-function guardarClave(pem) {
-  state.publicKeyPem = pem;
-  state.publicKeyAt = Date.now();
+function guardarClave(pem, kid) {
+  const ahoraMs = Date.now();
+  if (kid) {
+    state.keys.set(String(kid), { pem, at: ahoraMs });
+    state.ultimoKid = String(kid);
+  } else {
+    state.defaultPem = pem;
+    state.defaultAt = ahoraMs;
+  }
   state.claveCacheada = true;
 }
 
-async function getPublicKeyPem(forzar) {
-  const ahoraMs = Date.now();
-  if (!forzar && state.publicKeyPem && ahoraMs - state.publicKeyAt < config.jwtCacheMs) {
-    return state.publicKeyPem;
+function kidDelToken(token) {
+  try {
+    const decodificado = jwt.decode(token, { complete: true });
+    return (decodificado && decodificado.header && decodificado.header.kid) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Convierte una entrada JWKS a PEM.
+ *
+ * El SIA de produccion publica en `n` la clave SPKI/DER completa codificada
+ * en base64 (no el modulo puro como exige el estandar JWK). Se detecta ese
+ * formato y se parsea como DER; si no, se usa el formato JWK estandar.
+ */
+function jwkAPem(jwk) {
+  if (!jwk || !jwk.n) return null;
+
+  try {
+    const der = Buffer.from(String(jwk.n), 'base64');
+    if (der.length > 4 && der[0] === 0x30 && der[1] === 0x82) {
+      return crypto
+        .createPublicKey({ key: der, format: 'der', type: 'spki' })
+        .export({ type: 'spki', format: 'pem' });
+    }
+  } catch (e) {
+    // No era DER: se intenta el formato JWK estandar.
   }
 
-  // 1) Endpoint de clave publica en formato PEM.
+  try {
+    return crypto
+      .createPublicKey({ key: jwk, format: 'jwk' })
+      .export({ type: 'spki', format: 'pem' });
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Obtiene la clave publica adecuada para el token.
+ * - Si el token trae `kid`, se busca esa clave exacta en el JWKS.
+ * - Si no, se usa la primera clave o el endpoint PEM.
+ * - `forzar` ignora la cache (se usa cuando el SIA rota el par RSA).
+ */
+async function getPublicKeyPem(forzar, kid) {
+  const ahoraMs = Date.now();
+  const kidStr = kid ? String(kid) : null;
+
+  if (!forzar) {
+    if (kidStr && state.keys.has(kidStr)) {
+      const entrada = state.keys.get(kidStr);
+      if (ahoraMs - entrada.at < config.jwtCacheMs) return entrada.pem;
+    }
+    if (!kidStr && state.defaultPem && ahoraMs - state.defaultAt < config.jwtCacheMs) {
+      return state.defaultPem;
+    }
+  }
+
+  // 1) JWKS: fuente recomendada y permite seleccionar por kid.
+  try {
+    const r = await fetchJson(config.siaUrl + '/.well-known/jwks.json');
+    const jwks = r.data && r.data.datos ? r.data.datos : r.data;
+    const claves = jwks && Array.isArray(jwks.keys) ? jwks.keys : [];
+    if (claves.length) {
+      let jwk = null;
+      if (kidStr) {
+        jwk = claves.find((k) => String(k.kid) === kidStr) || null;
+      }
+      if (!jwk && !kidStr) jwk = claves[0];
+      // Si el emisor publica una sola clave, se acepta aunque el kid no
+      // coincida exactamente (tolerancia ante cambios de nombre).
+      if (!jwk && claves.length === 1) jwk = claves[0];
+
+      if (jwk) {
+        const pem = jwkAPem(jwk);
+        if (pem) {
+          guardarClave(pem, jwk.kid ? String(jwk.kid) : null);
+          return pem;
+        }
+      }
+    }
+  } catch (e) {
+    // Se intenta el endpoint PEM como respaldo.
+  }
+
+  // 2) Respaldo: endpoint PEM (no informa kid).
   try {
     const r = await fetchJson(config.siaUrl + '/api/v1/auth/clave-publica');
     const pem = extraerPem(r.data);
     if (pem) {
-      guardarClave(pem);
+      guardarClave(pem, null);
       return pem;
     }
   } catch (e) {
-    // Se intenta el JWKS como respaldo.
+    // Sin conexion: se usan las claves cacheadas, aunque esten vencidas.
   }
 
-  // 2) Respaldo JWKS.
-  try {
-    const r = await fetchJson(config.siaUrl + '/.well-known/jwks.json');
-    const jwks = r.data && r.data.datos ? r.data.datos : r.data;
-    const jwk = jwks && Array.isArray(jwks.keys) ? jwks.keys[0] : null;
-    if (jwk) {
-      const pem = crypto
-        .createPublicKey({ key: jwk, format: 'jwk' })
-        .export({ type: 'spki', format: 'pem' });
-      guardarClave(pem);
-      return pem;
-    }
-  } catch (e) {
-    // Sin conexion: si hay clave cacheada vencida, se usa igual.
-  }
-
-  if (state.publicKeyPem) return state.publicKeyPem;
+  if (kidStr && state.keys.has(kidStr)) return state.keys.get(kidStr).pem;
+  if (state.defaultPem) return state.defaultPem;
+  if (state.keys.size) return state.keys.values().next().value.pem;
 
   throw new SiaError('No se pudo obtener la clave pública del núcleo SIA.', {
     status: 503,
@@ -169,24 +256,25 @@ function verificarCon(pem, token) {
 }
 
 async function verifyToken(token) {
-  let pem = await getPublicKeyPem();
+  const kid = kidDelToken(token);
+  if (kid) state.ultimoKid = kid;
+
+  let pem = await getPublicKeyPem(false, kid);
   let ultimoError = null;
   let payload = null;
 
   try {
     payload = verificarCon(pem, token);
   } catch (e) {
-    // Si la clave estaba cacheada, puede haber rotado en el nucleo:
-    // se fuerza una actualizacion y se reintenta una sola vez.
+    // La clave pudo haber rotado en el nucleo: se fuerza una actualizacion
+    // (buscando el kid exacto) y se reintenta una sola vez.
     ultimoError = e;
-    if (state.claveCacheada) {
-      try {
-        pem = await getPublicKeyPem(true);
-        payload = verificarCon(pem, token);
-        ultimoError = null;
-      } catch (e2) {
-        ultimoError = e2;
-      }
+    try {
+      pem = await getPublicKeyPem(true, kid);
+      payload = verificarCon(pem, token);
+      ultimoError = null;
+    } catch (e2) {
+      ultimoError = e2;
     }
   }
 
@@ -264,6 +352,7 @@ function estadoJwt() {
       : Boolean(state.claveCacheada),
     emisor: config.emisor,
     claveCacheada: state.claveCacheada,
+    kid: state.ultimoKid || null,
   };
 }
 

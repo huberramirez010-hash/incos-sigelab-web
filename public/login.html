@@ -55,7 +55,7 @@
             <button class="btn btn-primary btn-block" id="btnIngresar" type="submit">Ingresar con SIA</button>
           </form>
 
-          <details class="demo-accounts">
+          <details class="demo-accounts" id="demoAccounts">
             <summary>Cuentas de demostración SIA</summary>
             <div class="demo-list" id="demoList"></div>
             <p class="hint">Contraseña única: <strong>Demo2026*</strong>. Datos ficticios del Anexo B.</p>
@@ -156,6 +156,13 @@
       API.pedir('/api/auth/config')
         .then(function (cfg) {
           document.getElementById('siaUrl').textContent = cfg.siaUrl || '—';
+
+          // Ocultar las cuentas demo cuando el núcleo es producción:
+          // esas cuentas ya no existen en el SIA real.
+          const demoBox = document.getElementById('demoAccounts');
+          const esSiaLocal = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(cfg.siaUrl || '');
+          if (demoBox && !esSiaLocal) demoBox.style.display = 'none';
+
           const modo = document.getElementById('authModo');
           if (cfg.demoCodigos) {
             modo.innerHTML = '<div class="alert alert-info" style="margin:0">Modo demostración: el código de 4 dígitos se muestra en pantalla y en la consola del servidor.</div>';

@@ -80,6 +80,56 @@ async function main() {
   const sinToken = await req('/api/ambientes');
   check('Sin token -> 401 NO_AUTENTICADO', sinToken.status === 401 && sinToken.json?.error?.codigo === 'NO_AUTENTICADO');
 
+  // Con el SIA de producción ya no existen las cuentas demo. En ese caso se
+  // validan los endpoints públicos y el JWKS, y se omite la suite que depende
+  // de las cuentas 9000001/9000006/9000007. Para la suite completa usar el
+  // simulador local (API_ACADEMICO_URL=http://127.0.0.1:3000).
+  const siaEsProduccion =
+    typeof s.siaUrl === 'string' &&
+    !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(s.siaUrl);
+
+  if (siaEsProduccion) {
+    console.log('\n[INFO] SIA de producción detectado: ' + s.siaUrl);
+    console.log('[INFO] Las cuentas demo SIA ya no existen; se omiten las pruebas que dependen de ellas.');
+    console.log('[INFO] Para la suite completa use el simulador local.');
+
+    try {
+      const urlJwks = s.siaUrl.replace(/\/+$/, '') + '/.well-known/jwks.json';
+      const r = await fetch(urlJwks);
+      const jwks = await r.json();
+      const claves = (jwks && jwks.keys) || [];
+      check('JWKS del SIA responde 200', r.status === 200, 'status ' + r.status);
+      check('JWKS incluye al menos una clave', claves.length > 0, 'keys ' + claves.length);
+      check(
+        'JWKS incluye kid',
+        claves.length > 0 && typeof claves[0].kid === 'string' && claves[0].kid.length > 0,
+        String(claves[0] && claves[0].kid)
+      );
+    } catch (e) {
+      check('JWKS del SIA responde', false, e.message);
+    }
+
+    if (process.env.SIA_TEST_USER && process.env.SIA_TEST_PASS) {
+      const sesionReal = await req('/api/auth/login', {
+        method: 'POST',
+        body: {
+          identificador: process.env.SIA_TEST_USER,
+          clave: process.env.SIA_TEST_PASS,
+        },
+      });
+      check('Login real contra el SIA -> 200', sesionReal.status === 200, 'status ' + sesionReal.status);
+      const tokenReal = sesionReal.json?.datos?.token;
+      check('El login real devuelve token', typeof tokenReal === 'string' && tokenReal.length > 20);
+      const meReal = await req('/api/auth/me', { token: tokenReal });
+      check('Token real validado por /api/auth/me -> 200', meReal.status === 200, 'status ' + meReal.status);
+    } else {
+      console.log('[INFO] Defina SIA_TEST_USER y SIA_TEST_PASS para validar un login real.');
+    }
+
+    resumen();
+    return;
+  }
+
   // ----------------------------------------------------------------
   console.log('\n2. Autenticación contra el núcleo');
   // ----------------------------------------------------------------
@@ -137,12 +187,29 @@ async function main() {
       telefono: telefonoLocal,
       clave: claveLocal,
       confirmar_clave: claveLocal,
+      rol_solicitado: 'SERVICIO',
     },
   });
   check(
     'Registro con correo no Google -> 400 CORREO_NO_GOOGLE',
     correoNoGoogle.status === 400 && correoNoGoogle.json?.error?.codigo === 'CORREO_NO_GOOGLE',
     'status ' + correoNoGoogle.status
+  );
+
+  const registroSinRol = await req('/api/auth/registro', {
+    method: 'POST',
+    body: {
+      nombre_completo: 'Prueba Sin Rol',
+      correo: 'sinrol.' + sufijo + '@gmail.com',
+      telefono: '+5916' + sufijo.slice(-7),
+      clave: claveLocal,
+      confirmar_clave: claveLocal,
+    },
+  });
+  check(
+    'Registro sin rol solicitado -> 400 ROL_REQUERIDO',
+    registroSinRol.status === 400 && registroSinRol.json?.error?.codigo === 'ROL_REQUERIDO',
+    'status ' + registroSinRol.status
   );
 
   const registroLocal = await req('/api/auth/registro', {
@@ -153,6 +220,7 @@ async function main() {
       telefono: telefonoLocal,
       clave: claveLocal,
       confirmar_clave: claveLocal,
+      rol_solicitado: 'SERVICIO',
     },
   });
   check(
@@ -166,8 +234,14 @@ async function main() {
   check('El registro devuelve código de correo de 4 dígitos', /^\d{4}$/.test(String(codigoCorreo || '')), String(codigoCorreo));
   check('El registro devuelve código de WhatsApp de 4 dígitos', /^\d{4}$/.test(String(codigoWhatsapp || '')), String(codigoWhatsapp));
   check(
-    'La cuenta nace inactiva hasta verificar el correo',
-    registroLocal.json?.datos?.usuario?.activo === false
+    'La cuenta nace inactiva y pendiente de aprobación',
+    registroLocal.json?.datos?.usuario?.activo === false &&
+      registroLocal.json?.datos?.usuario?.estado_solicitud === 'PENDIENTE'
+  );
+  check(
+    'La solicitud guarda el rol solicitado (SERVICIO)',
+    registroLocal.json?.datos?.usuario?.rol_solicitado === 'SERVICIO',
+    String(registroLocal.json?.datos?.usuario?.rol_solicitado)
   );
 
   const telefonoDuplicado = await req('/api/auth/registro', {
@@ -178,6 +252,7 @@ async function main() {
       telefono: telefonoLocal,
       clave: claveLocal,
       confirmar_clave: claveLocal,
+      rol_solicitado: 'SERVICIO',
     },
   });
   check(
@@ -202,16 +277,77 @@ async function main() {
     body: { usuario_id: usuarioLocalId, canal: 'EMAIL', codigo: codigoCorreo },
   });
   check(
-    'Verificar código de correo -> cuenta activa',
-    verificacionCorreo.status === 200 && verificacionCorreo.json?.datos?.usuario?.activo === true,
+    'Verificar código de correo -> correo verificado pero sigue PENDIENTE',
+    verificacionCorreo.status === 200 &&
+      verificacionCorreo.json?.datos?.usuario?.correo_verificado === true &&
+      verificacionCorreo.json?.datos?.usuario?.activo === false &&
+      verificacionCorreo.json?.datos?.usuario?.estado_solicitud === 'PENDIENTE',
     'status ' + verificacionCorreo.status
+  );
+
+  const loginPendiente = await req('/api/auth/login-local', {
+    method: 'POST',
+    body: { identificador: correoLocal, clave: claveLocal },
+  });
+  check(
+    'Login local antes de aprobación -> 403 SOLICITUD_PENDIENTE',
+    loginPendiente.status === 403 && loginPendiente.json?.error?.codigo === 'SOLICITUD_PENDIENTE',
+    'status ' + loginPendiente.status
+  );
+
+  const solicitudesSinToken = await req('/api/auth/solicitudes');
+  check('Solicitudes sin token -> 401', solicitudesSinToken.status === 401, 'status ' + solicitudesSinToken.status);
+
+  const solicitudesTecnico = await req('/api/auth/solicitudes', { token: tokenTecnico });
+  check(
+    'Solicitudes con Técnico -> 403 SIN_PERMISO',
+    solicitudesTecnico.status === 403 && solicitudesTecnico.json?.error?.codigo === 'SIN_PERMISO',
+    'status ' + solicitudesTecnico.status
+  );
+
+  const solicitudesAdmin = await req('/api/auth/solicitudes', { token: tokenEncargado });
+  const solicitudLocal = (solicitudesAdmin.json?.datos?.solicitudes || []).find(
+    (s) => Number(s.usuario_id) === Number(usuarioLocalId)
+  );
+  check(
+    'El administrador ve la solicitud pendiente y su rol',
+    solicitudesAdmin.status === 200 &&
+      Boolean(solicitudLocal) &&
+      solicitudLocal.estado_solicitud === 'PENDIENTE' &&
+      solicitudLocal.rol_solicitado === 'SERVICIO',
+    'status ' + solicitudesAdmin.status
+  );
+
+  const aprobacion = await req('/api/auth/solicitudes/' + usuarioLocalId + '/aprobar', {
+    method: 'POST',
+    token: tokenEncargado,
+    body: { rol: 'CONSULTA' },
+  });
+  check(
+    'Aprobar solicitud con rol CONSULTA -> 200',
+    aprobacion.status === 200 &&
+      aprobacion.json?.datos?.usuario?.estado_solicitud === 'APROBADO' &&
+      aprobacion.json?.datos?.usuario?.rol === 'CONSULTA',
+    'status ' + aprobacion.status
+  );
+
+  const aprobacionRepetida = await req('/api/auth/solicitudes/' + usuarioLocalId + '/aprobar', {
+    method: 'POST',
+    token: tokenEncargado,
+    body: { rol: 'CONSULTA' },
+  });
+  check(
+    'Aprobar dos veces -> 409 SOLICITUD_YA_PROCESADA',
+    aprobacionRepetida.status === 409 &&
+      aprobacionRepetida.json?.error?.codigo === 'SOLICITUD_YA_PROCESADA',
+    'status ' + aprobacionRepetida.status
   );
 
   const loginLocal = await req('/api/auth/login-local', {
     method: 'POST',
     body: { identificador: correoLocal, clave: claveLocal },
   });
-  check('Login local -> 200', loginLocal.status === 200, 'status ' + loginLocal.status);
+  check('Login local aprobado -> 200', loginLocal.status === 200, 'status ' + loginLocal.status);
   const tokenLocal = loginLocal.json?.datos?.token;
   check(
     'Cuenta local es de solo lectura (canManage=false)',
@@ -291,6 +427,7 @@ async function main() {
       telefono: telefonoLocal,
       clave: claveLocal,
       confirmar_clave: claveLocal,
+      rol_solicitado: 'SERVICIO',
     },
   });
   check(
@@ -298,6 +435,66 @@ async function main() {
     registroActivoDuplicado.status === 400 &&
       registroActivoDuplicado.json?.error?.codigo === 'REGISTRO_DUPLICADO',
     'status ' + registroActivoDuplicado.status
+  );
+
+  // ----------------------------------------------------------------
+  console.log('\n2c. Rechazo de solicitud de cuenta');
+  // ----------------------------------------------------------------
+  const correoRechazo = 'rechazo.' + sufijo + '@gmail.com';
+  const telefonoRechazo = '+5915' + sufijo.slice(-7);
+
+  const registroRechazo = await req('/api/auth/registro', {
+    method: 'POST',
+    body: {
+      nombre_completo: 'Prueba Rechazo',
+      correo: correoRechazo,
+      telefono: telefonoRechazo,
+      clave: claveLocal,
+      confirmar_clave: claveLocal,
+      rol_solicitado: 'ADMINISTRATIVO',
+    },
+  });
+  check(
+    'Registro para rechazo con rol ADMINISTRATIVO -> 201',
+    registroRechazo.status === 201 &&
+      registroRechazo.json?.datos?.usuario?.rol_solicitado === 'ADMINISTRATIVO',
+    'status ' + registroRechazo.status
+  );
+  const usuarioRechazoId = registroRechazo.json?.datos?.usuario?.usuario_id;
+  const codigoCorreoRechazo = registroRechazo.json?.datos?.demo?.correo;
+
+  const verificacionRechazo = await req('/api/auth/verificar-codigo', {
+    method: 'POST',
+    body: { usuario_id: usuarioRechazoId, canal: 'EMAIL', codigo: codigoCorreoRechazo },
+  });
+  check(
+    'Correo verificado para la solicitud de rechazo',
+    verificacionRechazo.status === 200 &&
+      verificacionRechazo.json?.datos?.usuario?.correo_verificado === true,
+    'status ' + verificacionRechazo.status
+  );
+
+  const rechazo = await req('/api/auth/solicitudes/' + usuarioRechazoId + '/rechazar', {
+    method: 'POST',
+    token: tokenEncargado,
+    body: { motivo: 'No corresponde al área solicitada.' },
+  });
+  check(
+    'Rechazar solicitud -> 200 y estado RECHAZADO',
+    rechazo.status === 200 &&
+      rechazo.json?.datos?.usuario?.estado_solicitud === 'RECHAZADO' &&
+      rechazo.json?.datos?.usuario?.activo === false,
+    'status ' + rechazo.status
+  );
+
+  const loginRechazado = await req('/api/auth/login-local', {
+    method: 'POST',
+    body: { identificador: correoRechazo, clave: claveLocal },
+  });
+  check(
+    'Login de cuenta rechazada -> 403 SOLICITUD_RECHAZADA',
+    loginRechazado.status === 403 && loginRechazado.json?.error?.codigo === 'SOLICITUD_RECHAZADA',
+    'status ' + loginRechazado.status
   );
 
   if (!tokenEncargado || !tokenTecnico) {
