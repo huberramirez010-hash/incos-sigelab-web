@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reportes · SIGELAB-INCOS</title>
+  <link rel="stylesheet" href="/css/app.css?v=7" />
+</head>
+<body>
+  <header id="topbar"></header>
+
+  <main class="container">
+    <div id="siaStatus" class="status-strip"><span class="dot"></span><span>Consultando estado del núcleo…</span></div>
+
+    <div class="page-head">
+      <div>
+        <h1>Reportes</h1>
+        <p class="sub">Genere y descargue reportes del sistema en Excel (.xlsx) o PDF: uso de laboratorios, equipos/máquinas y ambientes.</p>
+      </div>
+    </div>
+
+    <div id="alerta"></div>
+
+    <section class="card">
+      <h2 style="font-size:1.1rem;margin:0 0 12px 0">Uso de laboratorios</h2>
+      <p class="hint" style="margin-bottom:12px">Incluye fecha, horario, ambiente, docente, carrera, curso, estado y observaciones.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="usosDesde">Fecha desde</label>
+          <input class="form-control" id="usosDesde" type="date" />
+        </div>
+        <div class="field">
+          <label for="usosHasta">Fecha hasta</label>
+          <input class="form-control" id="usosHasta" type="date" />
+        </div>
+        <div class="field">
+          <label for="usosAmbiente">Ambiente</label>
+          <select class="form-select" id="usosAmbiente">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="usosEstado">Estado</label>
+          <select class="form-select" id="usosEstado">
+            <option value="">Todos</option>
+            <option value="EN_USO">En uso</option>
+            <option value="FINALIZADO">Finalizado</option>
+            <option value="CANCELADO">Cancelado</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn btn-primary" type="button" data-reporte="usos" data-formato="xlsx">Descargar Excel</button>
+        <button class="btn btn-outline" type="button" data-reporte="usos" data-formato="pdf">Descargar PDF</button>
+      </div>
+    </section>
+
+    <section class="card mt-3">
+      <h2 style="font-size:1.1rem;margin:0 0 12px 0">Equipos / Máquinas (inventario y estado)</h2>
+      <p class="hint" style="margin-bottom:12px">Incluye código, tipo, marca, modelo, estado (operativo, en mantenimiento, de baja), ambiente y características.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="eqAmbiente">Ambiente</label>
+          <select class="form-select" id="eqAmbiente">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="eqEstado">Estado</label>
+          <select class="form-select" id="eqEstado">
+            <option value="">Todos</option>
+            <option value="OPERATIVO">Operativo</option>
+            <option value="EN_MANTENIMIENTO">En mantenimiento</option>
+            <option value="DE_BAJA">De baja</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="eqTipo">Tipo (texto)</label>
+          <input class="form-control" id="eqTipo" placeholder="Ej. COMPUTADORA" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn btn-primary" type="button" data-reporte="equipos" data-formato="xlsx">Descargar Excel</button>
+        <button class="btn btn-outline" type="button" data-reporte="equipos" data-formato="pdf">Descargar PDF</button>
+      </div>
+    </section>
+
+    <section class="card mt-3">
+      <h2 style="font-size:1.1rem;margin:0 0 12px 0">Ambientes y resumen de equipos</h2>
+      <p class="hint" style="margin-bottom:12px">Incluye ambientes con capacidad, responsable y conteo de equipos (total, operativos, en mantenimiento, de baja).</p>
+      <div class="row" style="margin-top:12px">
+        <button class="btn btn-primary" type="button" data-reporte="ambientes" data-formato="xlsx">Descargar Excel</button>
+        <button class="btn btn-outline" type="button" data-reporte="ambientes" data-formato="pdf">Descargar PDF</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/api.js?v=7"></script>
+  <script src="/js/ui.js?v=7"></script>
+  <script>
+    (function () {
+      proteger();
+      montarNavegacion('reportes');
+      montarEstadoSia();
+
+      let ambientes = [];
+
+      async function cargarAmbientes() {
+        try {
+          const amb = await API.pedir('/api/ambientes');
+          ambientes = Array.isArray(amb) ? amb : [];
+          const opts = '<option value="">Todos</option>' + ambientes.map((a) =>
+            '<option value="' + a.id + '">' + esc((a.codigo || '') + ' - ' + (a.nombre || '')) + '</option>'
+          ).join('');
+          document.getElementById('usosAmbiente').innerHTML = opts;
+          document.getElementById('eqAmbiente').innerHTML = opts;
+        } catch (e) {
+          // sin ambientes
+        }
+      }
+
+      function nombreDesdeContentDisposition(header) {
+        if (!header) return null;
+        const m = /filename="?([^";]+)"?/i.exec(header);
+        return m ? m[1] : null;
+      }
+
+      async function descargarReporte(tipo, formato) {
+        limpiarAlerta('#alerta');
+        const params = new URLSearchParams();
+        params.set('formato', formato);
+
+        if (tipo === 'usos') {
+          const fd = document.getElementById('usosDesde').value;
+          const fh = document.getElementById('usosHasta').value;
+          const amb = document.getElementById('usosAmbiente').value;
+          const est = document.getElementById('usosEstado').value;
+          if (fd) params.set('fecha_desde', fd);
+          if (fh) params.set('fecha_hasta', fh);
+          if (amb) params.set('ambiente_id', amb);
+          if (est) params.set('estado', est);
+        } else if (tipo === 'equipos') {
+          const amb = document.getElementById('eqAmbiente').value;
+          const est = document.getElementById('eqEstado').value;
+          const tip = document.getElementById('eqTipo').value.trim();
+          if (amb) params.set('ambiente_id', amb);
+          if (est) params.set('estado', est);
+          if (tip) params.set('tipo', tip);
+        }
+
+        const url = '/api/reportes/' + tipo + '?' + params.toString();
+        try {
+          const res = await fetch(url, {
+            headers: { Authorization: 'Bearer ' + API.token() }
+          });
+          if (res.status === 401) {
+            API.limpiar();
+            location.replace('/login.html');
+            return;
+          }
+          if (!res.ok) {
+            let msg = 'No se pudo generar el reporte.';
+            try {
+              const j = await res.json();
+              if (j && j.error && j.error.mensaje) msg = j.error.mensaje;
+            } catch (e) {}
+            throw new Error(msg);
+          }
+          const blob = await res.blob();
+          const cd = res.headers.get('Content-Disposition');
+          const nombre = nombreDesdeContentDisposition(cd) || ('reporte_' + tipo + '.' + formato);
+          const a = document.createElement('a');
+          const href = URL.createObjectURL(blob);
+          a.href = href;
+          a.download = nombre;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(href), 1000);
+        } catch (e) {
+          mostrarAlerta('#alerta', e.message || 'Error al descargar el reporte.');
+        }
+      }
+
+      document.addEventListener('click', function (ev) {
+        const btn = ev.target.closest('button[data-reporte][data-formato]');
+        if (!btn) return;
+        descargarReporte(btn.getAttribute('data-reporte'), btn.getAttribute('data-formato'));
+      });
+
+      cargarAmbientes();
+    })();
+  </script>
+</body>
+</html>

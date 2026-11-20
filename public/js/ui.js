@@ -63,6 +63,7 @@ function montarNavegacion(activo) {
     { id: 'inventario', href: '/inventario.html', texto: 'Inventario' },
     { id: 'equipos', href: '/equipos.html', texto: 'Equipos' },
     { id: 'ambientes', href: '/ambientes.html', texto: 'Ambientes' },
+    { id: 'reportes', href: '/reportes.html', texto: 'Reportes' },
   ];
 
   // Enlaces exclusivos del Encargado (canManage).

@@ -60,7 +60,11 @@ router.get(
     const filtros = {
       ambiente_id: req.query.ambiente_id,
       persona_id: req.query.persona_id,
+      carrera_id: req.query.carrera_id,
+      curso_id: req.query.curso_id,
       fecha: req.query.fecha,
+      fecha_desde: req.query.fecha_desde,
+      fecha_hasta: req.query.fecha_hasta,
       turno: req.query.turno,
       estado: req.query.estado,
       incluir_inactivos: req.query.incluir_inactivos,
@@ -117,6 +121,10 @@ router.post(
     const uso = await store.createUso({
       ambiente_id: ambienteId,
       persona_id: personaId,
+      carrera_id: body.carrera_id || null,
+      carrera_nombre: String(body.carrera_nombre || '').trim(),
+      curso_id: body.curso_id || null,
+      curso_nombre: String(body.curso_nombre || '').trim(),
       fecha,
       turno: slot.valor,
       hora_inicio: slot.hora_inicio,

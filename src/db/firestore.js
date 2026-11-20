@@ -567,8 +567,12 @@ async function listUsos(filtros) {
   if (f.ambiente_id) lista = lista.filter((u) => u.ambiente_id === Number(f.ambiente_id));
   if (f.persona_id) lista = lista.filter((u) => u.persona_id === Number(f.persona_id));
   if (f.fecha) lista = lista.filter((u) => String(u.fecha) === String(f.fecha));
+  if (f.fecha_desde) lista = lista.filter((u) => String(u.fecha || '') >= String(f.fecha_desde));
+  if (f.fecha_hasta) lista = lista.filter((u) => String(u.fecha || '') <= String(f.fecha_hasta));
   if (f.turno) lista = lista.filter((u) => String(u.turno) === String(f.turno));
   if (f.estado) lista = lista.filter((u) => String(u.estado) === String(f.estado));
+  if (f.carrera_id) lista = lista.filter((u) => String(u.carrera_id || '') === String(f.carrera_id));
+  if (f.curso_id) lista = lista.filter((u) => String(u.curso_id || '') === String(f.curso_id));
   return lista.sort((a, b) => {
     const ka = String(a.fecha || '') + ' ' + String(a.hora_inicio || '') + ' ' + String(a.id || '');
     const kb = String(b.fecha || '') + ' ' + String(b.hora_inicio || '') + ' ' + String(b.id || '');
@@ -589,6 +593,10 @@ async function createUso(datos) {
     const item = {
       ambiente_id: Number(datos.ambiente_id),
       persona_id: Number(datos.persona_id),
+      carrera_id: datos.carrera_id ? Number(datos.carrera_id) : null,
+      carrera_nombre: datos.carrera_nombre || '',
+      curso_id: datos.curso_id ? Number(datos.curso_id) : null,
+      curso_nombre: datos.curso_nombre || '',
       fecha: String(datos.fecha),
       turno: String(datos.turno),
       hora_inicio: String(datos.hora_inicio),

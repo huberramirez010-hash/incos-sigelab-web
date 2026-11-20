@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Uso de laboratorios · SIGELAB-INCOS</title>
-  <link rel="stylesheet" href="/css/app.css?v=6" />
+  <link rel="stylesheet" href="/css/app.css?v=7" />
 </head>
 <body>
   <header id="topbar"></header>
@@ -15,7 +15,7 @@
     <div class="page-head">
       <div>
         <h1>Uso de laboratorios</h1>
-        <p class="sub">Registre qué docente utiliza cada laboratorio por fecha y horario (tarde/noche). Solo Encargado.</p>
+        <p class="sub">Registre qué docente utiliza cada laboratorio, con carrera y curso, por fecha y horario (tarde/noche). Solo Encargado.</p>
       </div>
     </div>
 
@@ -36,7 +36,19 @@
             <select class="form-select" id="docente" required>
               <option value="">Cargando…</option>
             </select>
-            <div class="hint">Se obtiene del SIA. Si no aparece, verifique la conexión o la caché.</div>
+            <div class="hint">Se obtiene del SIA/caché.</div>
+          </div>
+          <div class="field">
+            <label for="carrera">Carrera</label>
+            <select class="form-select" id="carrera">
+              <option value="">Cargando…</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="curso">Curso</label>
+            <select class="form-select" id="curso">
+              <option value="">Seleccione carrera primero…</option>
+            </select>
           </div>
           <div class="field">
             <label for="fecha">Fecha *</label>
@@ -83,22 +95,23 @@
               <th>Fecha</th>
               <th>Horario</th>
               <th>Ambiente</th>
-              <th>Docente (usuario)</th>
+              <th>Docente</th>
+              <th>Carrera / Curso</th>
               <th>Estado</th>
               <th>Observaciones</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="tbodyUsos">
-            <tr><td colspan="7" class="empty">Cargando registros…</td></tr>
+            <tr><td colspan="8" class="empty">Cargando registros…</td></tr>
           </tbody>
         </table>
       </div>
     </section>
   </main>
 
-  <script src="/js/api.js?v=6"></script>
-  <script src="/js/ui.js?v=6"></script>
+  <script src="/js/api.js?v=7"></script>
+  <script src="/js/ui.js?v=7"></script>
   <script>
     (function () {
       proteger();
@@ -114,6 +127,8 @@
       let catalogo = { turnos: [] };
       let ambientes = [];
       let docentes = [];
+      let carreras = [];
+      let cursos = [];
 
       function hoyISO() {
         const d = new Date();
@@ -127,15 +142,36 @@
         return '<span class="badge badge-' + (mapa[estado] || 'neutral') + '">' + esc(texto) + '</span>';
       }
 
+      function poblarCursos(carreraId) {
+        const selCurso = document.getElementById('curso');
+        let lista = cursos;
+        if (carreraId) {
+          lista = cursos.filter((c) => String(c.carreraId || c.carrera_id) === String(carreraId));
+        }
+        if (!lista.length) {
+          selCurso.innerHTML = '<option value="">' + (carreraId ? 'No hay cursos para esta carrera' : 'Seleccione carrera primero…') + '</option>';
+          return;
+        }
+        selCurso.innerHTML = '<option value="">Seleccione…</option>' + lista.map((c) => {
+          const nombre = c.nombre || ('Curso ' + c.id);
+          const extra = [c.carrera, c.turno].filter(Boolean).join(' · ');
+          return '<option value="' + c.id + '">' + esc(nombre + (extra ? ' (' + extra + ')' : '')) + '</option>';
+        }).join('');
+      }
+
       async function cargarCatalogos() {
-        const [cat, amb, doc] = await Promise.all([
+        const [cat, amb, doc, car, cur] = await Promise.all([
           API.pedir('/api/usos/catalogos').catch(() => ({ turnos: [] })),
           API.pedir('/api/ambientes').catch(() => []),
           API.pedir('/api/docentes?limite=200').catch(() => []),
+          API.pedir('/api/academico/carreras').catch(() => []),
+          API.pedir('/api/academico/cursos').catch(() => []),
         ]);
         catalogo = cat || { turnos: [] };
         ambientes = Array.isArray(amb) ? amb.filter((a) => a.activo !== false) : [];
         docentes = Array.isArray(doc) ? doc : [];
+        carreras = Array.isArray(car) ? car : [];
+        cursos = Array.isArray(cur) ? cur : [];
 
         const selAmb = document.getElementById('ambiente');
         selAmb.innerHTML = '<option value="">Seleccione…</option>' + ambientes.map((a) =>
@@ -156,11 +192,26 @@
           selDoc.innerHTML = '<option value="">No hay docentes disponibles</option>';
         }
 
+        const selCarrera = document.getElementById('carrera');
+        if (carreras.length) {
+          selCarrera.innerHTML = '<option value="">Seleccione…</option>' + carreras.map((c) =>
+            '<option value="' + c.id + '">' + esc(c.nombre || ('Carrera ' + c.id)) + '</option>'
+          ).join('');
+        } else {
+          selCarrera.innerHTML = '<option value="">No disponible (requiere sesión SIA)</option>';
+        }
+
+        poblarCursos('');
+
         const selTurno = document.getElementById('turno');
         selTurno.innerHTML = '<option value="">Seleccione…</option>' + (catalogo.turnos || []).map((t) =>
           '<option value="' + esc(t.valor) + '">' + esc(t.etiqueta) + '</option>'
         ).join('');
       }
+
+      document.getElementById('carrera').addEventListener('change', function () {
+        poblarCursos(this.value);
+      });
 
       async function cargarUsos() {
         const fecha = document.getElementById('filtroFecha').value;
@@ -182,7 +233,7 @@
       function renderUsos(usos) {
         const tbody = document.getElementById('tbodyUsos');
         if (!usos.length) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty">No hay registros para los filtros seleccionados.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" class="empty">No hay registros para los filtros seleccionados.</td></tr>';
           return;
         }
         tbody.innerHTML = usos.map((u) => {
@@ -195,11 +246,13 @@
               acciones += '<button class="btn btn-danger btn-sm" data-accion="cancelar" data-id="' + u.id + '">Cancelar</button>';
             }
           }
+          const carreraCurso = [u.carrera_nombre, u.curso_nombre].filter(Boolean).join('<br>');
           return '<tr>' +
             '<td>' + esc(u.fecha || '') + '</td>' +
             '<td>' + esc(u.turno_etiqueta || u.turno || '') + '<br><span class="hint">' + esc((u.hora_inicio || '') + ' - ' + (u.hora_fin || '')) + '</span></td>' +
             '<td><strong>' + esc(u.ambiente_codigo || '') + '</strong><br><span class="hint">' + esc(u.ambiente_nombre || '') + '</span></td>' +
             '<td>' + esc(u.persona_nombre || ('ID ' + u.persona_id)) + '</td>' +
+            '<td>' + (carreraCurso || '<span class="hint">—</span>') + '</td>' +
             '<td>' + estadoUsoBadge(u.estado) + '</td>' +
             '<td>' + esc(u.observaciones || '') + '</td>' +
             '<td><div class="actions">' + (acciones || '<span class="hint">—</span>') + '</div></td>' +
@@ -217,10 +270,19 @@
         try {
           const selDoc = document.getElementById('docente');
           const optDoc = selDoc.options[selDoc.selectedIndex];
+          const selCarrera = document.getElementById('carrera');
+          const optCarrera = selCarrera.options[selCarrera.selectedIndex];
+          const selCurso = document.getElementById('curso');
+          const optCurso = selCurso.options[selCurso.selectedIndex];
+
           const body = {
             ambiente_id: Number(document.getElementById('ambiente').value),
             persona_id: Number(selDoc.value),
             persona_nombre: optDoc ? optDoc.text.split(' (')[0] : '',
+            carrera_id: selCarrera.value ? Number(selCarrera.value) : null,
+            carrera_nombre: optCarrera && selCarrera.value ? optCarrera.text : '',
+            curso_id: selCurso.value ? Number(selCurso.value) : null,
+            curso_nombre: optCurso && selCurso.value ? optCurso.text : '',
             fecha: document.getElementById('fecha').value,
             turno: document.getElementById('turno').value,
             observaciones: document.getElementById('observaciones').value,

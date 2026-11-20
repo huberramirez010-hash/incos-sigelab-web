@@ -18,7 +18,9 @@ app.use('/api/ambientes', require('./routes/ambientes'));
 app.use('/api/equipos', require('./routes/equipos'));
 app.use('/api/personas', require('./routes/personas'));
 app.use('/api/docentes', require('./routes/docentes'));
+app.use('/api/academico', require('./routes/academico'));
 app.use('/api/usos', require('./routes/usos'));
+app.use('/api/reportes', require('./routes/reportes'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/auditoria', require('./routes/auditoria'));
 
